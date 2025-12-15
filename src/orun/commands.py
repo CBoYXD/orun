@@ -1,5 +1,6 @@
 from orun import db, core
 from orun.utils import Colors, colored, print_error, print_success, print_info, print_warning
+from orun.yolo import yolo_mode
 
 def cmd_models():
     """Prints all available models and their aliases."""
@@ -38,7 +39,7 @@ def cmd_history(limit: int = 10):
 
     print(colored("\nUse 'orun c <id>' to continue a conversation.", Colors.YELLOW))
 
-def cmd_continue(conversation_id: int, prompt: str = None, image_paths: list = None, model_override: str = None, use_tools: bool = False):
+def cmd_continue(conversation_id: int, prompt: str = None, image_paths: list = None, model_override: str = None, use_tools: bool = False, yolo: bool = False):
     """Continue an existing conversation."""
     conv = db.get_conversation(conversation_id)
     if not conv:
@@ -46,16 +47,22 @@ def cmd_continue(conversation_id: int, prompt: str = None, image_paths: list = N
         return
 
     model_name = model_override if model_override else conv["model"]
+
+    # Set YOLO mode if requested
+    if yolo:
+        yolo_mode.yolo_active = True
+        print(colored("🔥 YOLO MODE ENABLED", Colors.RED))
+
     core.run_chat_mode(model_name, prompt or "", image_paths or [], conversation_id, use_tools=use_tools)
 
-def cmd_last(prompt: str = None, image_paths: list = None, model_override: str = None, use_tools: bool = False):
+def cmd_last(prompt: str = None, image_paths: list = None, model_override: str = None, use_tools: bool = False, yolo: bool = False):
     """Continue the last conversation."""
     conversation_id = db.get_last_conversation_id()
     if not conversation_id:
         print_error("No conversations found.")
         return
 
-    cmd_continue(conversation_id, prompt, image_paths, model_override, use_tools=use_tools)
+    cmd_continue(conversation_id, prompt, image_paths, model_override, use_tools=use_tools, yolo=yolo)
 
 def cmd_refresh():
     """Syncs models from Ollama."""

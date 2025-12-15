@@ -2,6 +2,7 @@ import ollama
 import json
 from orun import db, utils, tools
 from orun.utils import Colors, colored, print_error, print_warning, print_success, print_info
+from orun.yolo import yolo_mode
 
 def handle_ollama_stream(stream) -> str:
     """Prints the stream and returns the full response."""
@@ -23,7 +24,7 @@ def execute_tool_calls(tool_calls, messages):
     for tool in tool_calls:
         func_name = tool.function.name
         args = tool.function.arguments
-        
+
         # Args can be a dict or a JSON string depending on the model/library version
         if isinstance(args, str):
             try:
@@ -31,45 +32,74 @@ def execute_tool_calls(tool_calls, messages):
             except json.JSONDecodeError:
                 pass # It might be a malformed string or actually a dict disguised
 
-        # Confirmation Prompt
-        print(f"\n{Colors.MAGENTA}🛠️  AI wants to execute:{Colors.RESET} {Colors.CYAN}{func_name}{Colors.RESET}")
-        print(f"{Colors.GREY}Arguments: {args}{Colors.RESET}")
-        
-        confirm = input(f"{Colors.YELLOW}Allow? [y/N]: {Colors.RESET}").lower()
-        
-        if confirm == 'y':
-            func = tools.AVAILABLE_TOOLS.get(func_name)
-            if func:
-                print(f"{Colors.GREY}Running...{Colors.RESET}")
-                result = func(**args)
-                
-                # Check if result is excessively long (e.g. reading a huge file)
-                preview = result[:100] + "..." if len(result) > 100 else result
-                print(f"{Colors.GREY}Result: {preview}{Colors.RESET}")
-                
-                messages.append({
-                    'role': 'tool',
-                    'content': str(result),
-                    # Some implementations require tool_call_id, Ollama currently matches by sequence usually
-                    # but let's check API specs. For now, simple append works in many cases.
-                })
-            else:
-                print_error(f"Tool '{func_name}' not found.")
-                messages.append({'role': 'tool', 'content': f"Error: Tool '{func_name}' not found."})
-        else:
-            print_warning("Tool execution denied.")
-            messages.append({'role': 'tool', 'content': "User denied tool execution."})
+        # Special handling for shell commands with YOLO mode
+        should_confirm = True
+        if func_name == 'run_shell_command' and 'command' in args:
+            command = args['command']
 
-def run_single_shot(model_name: str, user_prompt: str, image_paths: list[str] | None, use_tools: bool = False):
+            # Check if command is allowed
+            allowed, reason = yolo_mode.is_command_allowed(command)
+            if not allowed:
+                print(f"\n{Colors.RED}❌ BLOCKED: {reason}{Colors.RESET}")
+                messages.append({'role': 'tool', 'content': f"Command blocked: {reason}"})
+                continue
+
+            # Check if we should skip confirmation
+            skip_confirm, skip_reason = yolo_mode.should_skip_confirmation(command)
+            if skip_confirm:
+                should_confirm = False
+                print(f"\n{Colors.MAGENTA}🛠️  AI executing:{Colors.RESET} {Colors.CYAN}{func_name}{Colors.RESET}")
+                print(f"{Colors.GREY}Arguments: {args}{Colors.RESET}")
+                print(f"{Colors.YELLOW}{skip_reason}{Colors.RESET}")
+
+        # Confirmation Prompt (or display if auto-confirming)
+        if should_confirm:
+            print(f"\n{Colors.MAGENTA}🛠️  AI wants to execute:{Colors.RESET} {Colors.CYAN}{func_name}{Colors.RESET}")
+            print(f"{Colors.GREY}Arguments: {args}{Colors.RESET}")
+
+            confirm = input(f"{Colors.YELLOW}Allow? [y/N]: {Colors.RESET}").lower()
+
+            if confirm != 'y':
+                print_warning("Tool execution denied.")
+                messages.append({'role': 'tool', 'content': "User denied tool execution."})
+                continue
+
+        # Execute the tool
+        func = tools.AVAILABLE_TOOLS.get(func_name)
+        if func:
+            print(f"{Colors.GREY}Running...{Colors.RESET}")
+            result = func(**args)
+
+            # Check if result is excessively long (e.g. reading a huge file)
+            preview = result[:100] + "..." if len(result) > 100 else result
+            print(f"{Colors.GREY}Result: {preview}{Colors.RESET}")
+
+            messages.append({
+                'role': 'tool',
+                'content': str(result),
+                # Some implementations require tool_call_id, Ollama currently matches by sequence usually
+                # but let's check API specs. For now, simple append works in many cases.
+            })
+        else:
+            print_error(f"Tool '{func_name}' not found.")
+            messages.append({'role': 'tool', 'content': f"Error: Tool '{func_name}' not found."})
+
+def run_single_shot(model_name: str, user_prompt: str, image_paths: list[str] | None, use_tools: bool = False, yolo: bool = False):
     """Handles a single query to the model."""
     utils.ensure_ollama_running()
+
+    # Set YOLO mode if requested
+    if yolo:
+        yolo_mode.yolo_active = True
+        print(colored("🔥 YOLO MODE ENABLED for this command", Colors.RED))
+
     print(colored(f"🤖 [{model_name}] Thinking...", Colors.CYAN))
 
     conversation_id = db.create_conversation(model_name)
     db.add_message(conversation_id, "user", user_prompt, image_paths or None)
-    
+
     messages = [{'role': 'user', 'content': user_prompt, 'images': image_paths or None}]
-    
+
     # Tool definitions
     tool_defs = tools.TOOL_DEFINITIONS if use_tools else None
 
@@ -78,14 +108,14 @@ def run_single_shot(model_name: str, user_prompt: str, image_paths: list[str] | 
         if use_tools:
             response = ollama.chat(model=model_name, messages=messages, tools=tool_defs, stream=False)
             msg = response['message']
-            
+
             # Check for tool calls
             if msg.get('tool_calls'):
                 # Add assistant's "thought" or empty tool call request to history
                 messages.append(msg)
-                
+
                 execute_tool_calls(msg['tool_calls'], messages)
-                
+
                 # Follow up with the tool outputs
                 print(colored(f"🤖 [{model_name}] Processing tool output...", Colors.CYAN))
                 stream = ollama.chat(model=model_name, messages=messages, stream=True)
@@ -106,6 +136,10 @@ def run_single_shot(model_name: str, user_prompt: str, image_paths: list[str] | 
     except Exception as e:
         print()
         print_error(f"Error: {e}")
+    finally:
+        # Reset YOLO mode if it was enabled for this command
+        if yolo:
+            yolo_mode.yolo_active = False
 
 def run_chat_mode(model_name: str, initial_prompt: str | None, initial_images: list[str] | None, conversation_id: int | None = None, use_tools: bool = False):
     """Runs an interactive chat session."""
@@ -113,7 +147,15 @@ def run_chat_mode(model_name: str, initial_prompt: str | None, initial_images: l
     print(colored(f"Entering chat mode with '{model_name}'.", Colors.GREEN))
     if use_tools:
         print(colored("🛠️  Agent Mode Enabled: AI can read/write files and run commands.", Colors.MAGENTA))
+        print(colored("💡 Special commands:", Colors.GREY))
+        print(colored("   /yolo        - Toggle YOLO mode (no confirmations)", Colors.GREY))
+        print(colored("   /reload-yolo - Reload YOLO configuration", Colors.GREY))
+        print(colored("   Ctrl+Y       - Toggle YOLO mode (hotkey)", Colors.GREY))
     print("Type 'quit' or 'exit' to end the session.")
+
+    # Start hotkey listener for Ctrl+Y if tools are enabled
+    if use_tools:
+        yolo_mode.start_hotkey_listener()
 
     if conversation_id:
         messages = db.get_conversation_messages(conversation_id)
@@ -182,6 +224,15 @@ def run_chat_mode(model_name: str, initial_prompt: str | None, initial_images: l
             if user_input.lower() in ['quit', 'exit']:
                 break
 
+            # Handle special commands
+            if user_input.strip() == "/yolo":
+                yolo_mode.toggle(show_message=True)
+                continue
+
+            if user_input.strip() == "/reload-yolo":
+                yolo_mode.reload_config()
+                continue
+
             print(colored(f"🤖 [{model_name}] Thinking...", Colors.CYAN))
 
             messages.append({'role': 'user', 'content': user_input})
@@ -203,3 +254,7 @@ def run_chat_mode(model_name: str, initial_prompt: str | None, initial_images: l
             print_error(f"Error: {e}")
             if messages and messages[-1]['role'] == 'user':
                 messages.pop()
+
+    # Stop hotkey listener when chat ends
+    if use_tools:
+        yolo_mode.stop_hotkey_listener()

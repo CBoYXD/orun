@@ -6,6 +6,7 @@ This file provides guidance to AI assistants when working with code in this repo
 
 orun-py is a Python CLI wrapper for interacting with local LLMs via Ollama. It features:
 - **Agent Capabilities**: Can read/write files, run shell commands, search files, and fetch URLs (with user confirmation).
+- **YOLO Mode**: Toggle confirmation-less execution mode for trusted commands.
 - **Multimedia**: Built-in screenshot discovery and attachment.
 - **History**: SQLite-based conversation tracking.
 
@@ -79,3 +80,40 @@ Tools are enabled by default for all chat/query modes. The AI can:
 - `run_shell_command`
 - `fetch_url`
 User confirmation is required for execution.
+
+## YOLO Mode (No Confirmations)
+
+### What is YOLO Mode?
+YOLO Mode allows the AI to execute shell commands without asking for confirmation, making interactions much faster. However, dangerous commands are still blocked for safety.
+
+### How to Use YOLO Mode
+1. **In Chat Mode**:
+   - Type `/yolo` to toggle YOLO mode on/off
+   - Type `/reload-yolo` to reload configuration after editing the config file
+2. **For Single Commands**: Use the `--yolo` flag
+
+### Command Examples
+```bash
+# Start chat with YOLO mode pre-enabled
+orun chat --yolo
+
+# Execute a single command without confirmation
+orun "run git status" --yolo
+
+# Continue a conversation with YOLO mode
+orun c 42 "make build" --yolo
+```
+
+### Safety Features
+- **Forbidden Commands**: Dangerous commands like `rm -rf /`, `dd if=`, etc. are always blocked
+- **Pattern Detection**: Regex patterns catch potentially dangerous variants
+- **Whitelist Support**: Safe commands (ls, git status, etc.) are pre-configured
+
+### Configuration
+The orun configuration is stored in `~/.orun/config.json` (same directory as the database):
+- `yolo.forbidden_commands`: Commands that are always blocked
+- `yolo.whitelisted_commands`: Commands considered safe
+
+The configuration file is automatically created with sensible defaults the first time you run orun. You can edit this file to customize which commands require confirmation in YOLO mode.
+
+The JSON structure allows for future configuration options under different sections.

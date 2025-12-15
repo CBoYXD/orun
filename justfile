@@ -1,7 +1,7 @@
 set shell := ["powershell.exe", "-c"]
 
 # Release a new version (bump -> sync -> build -> publish -> commit)
-release message:
+publish message:
     python scripts/bump_version.py
     uv sync
     uv build

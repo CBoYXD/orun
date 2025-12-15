@@ -6,7 +6,7 @@ import ollama
 from orun.utils import Colors, colored, print_warning, print_success, print_error, print_info, ensure_ollama_running
 
 DB_DIR = Path.home() / ".orun"
-DB_PATH = DB_DIR / "history.db"
+DB_PATH = DB_DIR / "main.db"
 
 DB_DIR.mkdir(parents=True, exist_ok=True)
 db = SqliteDatabase(DB_PATH)

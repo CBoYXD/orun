@@ -51,18 +51,19 @@ def main():
             parser.add_argument("prompt", nargs="*", help="Initial prompt")
             parser.add_argument("-m", "--model", help="Override model")
             parser.add_argument("-i", "--images", nargs="*", type=str, help="Screenshot indices")
+            parser.add_argument("--yolo", action="store_true", help="Enable YOLO mode (no confirmations)")
             args = parser.parse_args(sys.argv[2:])
-            
+
             image_paths = utils.get_image_paths(args.images)
-            
+
             # Resolve model
             model_name = models.get(args.model, args.model) if args.model else db.get_active_model()
-            
+
             if not model_name:
                 print_error("No active model set.")
                 print(f"Please specify a model with {colored('-m <model>', Colors.YELLOW)} or set a default with {colored('orun set-active <model>', Colors.YELLOW)}")
                 return
-                
+
             if args.model:
                 db.set_active_model(model_name)
 
@@ -75,22 +76,23 @@ def main():
             parser.add_argument("prompt", nargs="*", help="Initial prompt")
             parser.add_argument("-m", "--model", help="Override model")
             parser.add_argument("-i", "--images", nargs="*", type=str, help="Screenshot indices")
+            parser.add_argument("--yolo", action="store_true", help="Enable YOLO mode (no confirmations)")
             args = parser.parse_args(sys.argv[2:])
-            
+
             image_paths = utils.get_image_paths(args.images)
-            
+
             # Resolve model override
             model_override = models.get(args.model, args.model) if args.model else None
             if not model_override:
                 conv = db.get_conversation(args.id)
                 if conv:
                      model_override = conv["model"]
-            
+
             if model_override:
                 db.set_active_model(model_override)
 
             # Always enable tools
-            commands.cmd_continue(args.id, " ".join(args.prompt) if args.prompt else None, image_paths, model_override, use_tools=True)
+            commands.cmd_continue(args.id, " ".join(args.prompt) if args.prompt else None, image_paths, model_override, use_tools=True, yolo=args.yolo)
             return
 
         if cmd == "last":
@@ -98,10 +100,11 @@ def main():
             parser.add_argument("prompt", nargs="*", help="Initial prompt")
             parser.add_argument("-m", "--model", help="Override model")
             parser.add_argument("-i", "--images", nargs="*", type=str, help="Screenshot indices")
+            parser.add_argument("--yolo", action="store_true", help="Enable YOLO mode (no confirmations)")
             args = parser.parse_args(sys.argv[2:])
-            
+
             image_paths = utils.get_image_paths(args.images)
-            
+
             # Resolve model override
             model_override = models.get(args.model, args.model) if args.model else None
             if not model_override:
@@ -110,12 +113,12 @@ def main():
                      conv = db.get_conversation(cid)
                      if conv:
                          model_override = conv["model"]
-            
+
             if model_override:
                 db.set_active_model(model_override)
 
             # Always enable tools
-            commands.cmd_last(" ".join(args.prompt) if args.prompt else None, image_paths, model_override, use_tools=True)
+            commands.cmd_last(" ".join(args.prompt) if args.prompt else None, image_paths, model_override, use_tools=True, yolo=args.yolo)
             return
 
     # Default Query Mode (Single Shot)
@@ -126,6 +129,7 @@ def main():
     parser.add_argument("prompt", nargs="*", help="Text prompt")
     parser.add_argument("-m", "--model", default="default", help="Model alias or name")
     parser.add_argument("-i", "--images", nargs="*", type=str, help="Screenshot indices")
+    parser.add_argument("--yolo", action="store_true", help="Enable YOLO mode (no confirmations)")
 
     args = parser.parse_args()
 
@@ -154,7 +158,7 @@ def main():
         return
 
     # Always enable tools for single shot too
-    core.run_single_shot(model_name, user_prompt, image_paths, use_tools=True)
+    core.run_single_shot(model_name, user_prompt, image_paths, use_tools=True, yolo=args.yolo)
 
 if __name__ == "__main__":
     try:
