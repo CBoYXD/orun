@@ -52,6 +52,7 @@ def main():
             parser.add_argument("prompt", nargs="*", help="Initial prompt")
             parser.add_argument("-m", "--model", help="Override model")
             parser.add_argument("-i", "--images", nargs="*", type=str, help="Screenshot indices")
+            parser.add_argument("--agent", action="store_true", help="Enable Agent mode")
             args = parser.parse_args(sys.argv[2:])
             
             image_paths = utils.get_image_paths(args.images)
@@ -66,7 +67,7 @@ def main():
             if model_override:
                 db.set_active_model(model_override)
 
-            commands.cmd_continue(args.id, " ".join(args.prompt) if args.prompt else None, image_paths, model_override)
+            commands.cmd_continue(args.id, " ".join(args.prompt) if args.prompt else None, image_paths, model_override, use_tools=args.agent)
             return
 
         if cmd == "last":
@@ -74,6 +75,7 @@ def main():
             parser.add_argument("prompt", nargs="*", help="Initial prompt")
             parser.add_argument("-m", "--model", help="Override model")
             parser.add_argument("-i", "--images", nargs="*", type=str, help="Screenshot indices")
+            parser.add_argument("--agent", action="store_true", help="Enable Agent mode")
             args = parser.parse_args(sys.argv[2:])
             
             image_paths = utils.get_image_paths(args.images)
@@ -90,7 +92,7 @@ def main():
             if model_override:
                 db.set_active_model(model_override)
 
-            commands.cmd_last(" ".join(args.prompt) if args.prompt else None, image_paths, model_override)
+            commands.cmd_last(" ".join(args.prompt) if args.prompt else None, image_paths, model_override, use_tools=args.agent)
             return
 
     # Default Query Mode
@@ -102,6 +104,7 @@ def main():
     parser.add_argument("-m", "--model", default="default", help="Model alias or name")
     parser.add_argument("-i", "--images", nargs="*", type=str, help="Screenshot indices")
     parser.add_argument("--chat", action="store_true", help="Enable chat mode")
+    parser.add_argument("--agent", action="store_true", help="Enable Agent mode (allow AI to run commands/edit files)")
 
     args = parser.parse_args()
 
@@ -129,11 +132,11 @@ def main():
         return
 
     if args.chat:
-        core.run_chat_mode(model_name, user_prompt, image_paths)
+        core.run_chat_mode(model_name, user_prompt, image_paths, use_tools=args.agent)
     else:
         if not user_prompt and image_paths:
             user_prompt = "Describe this image."
-        core.run_single_shot(model_name, user_prompt, image_paths)
+        core.run_single_shot(model_name, user_prompt, image_paths, use_tools=args.agent)
 
 if __name__ == "__main__":
     try:

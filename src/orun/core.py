@@ -1,6 +1,7 @@
 import ollama
-from orun import db, utils
-from orun.utils import Colors, colored, print_error
+import json
+from orun import db, utils, tools
+from orun.utils import Colors, colored, print_error, print_warning, print_success, print_info
 
 def handle_ollama_stream(stream) -> str:
     """Prints the stream and returns the full response."""
@@ -17,29 +18,99 @@ def handle_ollama_stream(stream) -> str:
         print()
     return full_response
 
-def run_single_shot(model_name: str, user_prompt: str, image_paths: list[str] | None):
+def execute_tool_calls(tool_calls, messages):
+    """Executes tool calls with user confirmation and updates messages."""
+    for tool in tool_calls:
+        func_name = tool.function.name
+        args = tool.function.arguments
+        
+        # Args can be a dict or a JSON string depending on the model/library version
+        if isinstance(args, str):
+            try:
+                args = json.loads(args)
+            except json.JSONDecodeError:
+                pass # It might be a malformed string or actually a dict disguised
+
+        # Confirmation Prompt
+        print(f"\n{Colors.MAGENTA}🛠️  AI wants to execute:{Colors.RESET} {Colors.CYAN}{func_name}{Colors.RESET}")
+        print(f"{Colors.GREY}Arguments: {args}{Colors.RESET}")
+        
+        confirm = input(f"{Colors.YELLOW}Allow? [y/N]: {Colors.RESET}").lower()
+        
+        if confirm == 'y':
+            func = tools.AVAILABLE_TOOLS.get(func_name)
+            if func:
+                print(f"{Colors.GREY}Running...{Colors.RESET}")
+                result = func(**args)
+                
+                # Check if result is excessively long (e.g. reading a huge file)
+                preview = result[:100] + "..." if len(result) > 100 else result
+                print(f"{Colors.GREY}Result: {preview}{Colors.RESET}")
+                
+                messages.append({
+                    'role': 'tool',
+                    'content': str(result),
+                    # Some implementations require tool_call_id, Ollama currently matches by sequence usually
+                    # but let's check API specs. For now, simple append works in many cases.
+                })
+            else:
+                print_error(f"Tool '{func_name}' not found.")
+                messages.append({'role': 'tool', 'content': f"Error: Tool '{func_name}' not found."})
+        else:
+            print_warning("Tool execution denied.")
+            messages.append({'role': 'tool', 'content': "User denied tool execution."})
+
+def run_single_shot(model_name: str, user_prompt: str, image_paths: list[str] | None, use_tools: bool = False):
     """Handles a single query to the model."""
     print(colored(f"🤖 [{model_name}] Thinking...", Colors.CYAN))
 
     conversation_id = db.create_conversation(model_name)
     db.add_message(conversation_id, "user", user_prompt, image_paths or None)
+    
+    messages = [{'role': 'user', 'content': user_prompt, 'images': image_paths or None}]
+    
+    # Tool definitions
+    tool_defs = tools.TOOL_DEFINITIONS if use_tools else None
 
     try:
-        stream = ollama.chat(
-            model=model_name,
-            messages=[{'role': 'user', 'content': user_prompt, 'images': image_paths or None}],
-            stream=True,
-        )
-        response = handle_ollama_stream(stream)
-        if response:
-            db.add_message(conversation_id, "assistant", response)
+        # If using tools, we can't easily stream the first response because we need to parse JSON first
+        if use_tools:
+            response = ollama.chat(model=model_name, messages=messages, tools=tool_defs, stream=False)
+            msg = response['message']
+            
+            # Check for tool calls
+            if msg.get('tool_calls'):
+                # Add assistant's "thought" or empty tool call request to history
+                messages.append(msg)
+                
+                execute_tool_calls(msg['tool_calls'], messages)
+                
+                # Follow up with the tool outputs
+                print(colored(f"🤖 [{model_name}] Processing tool output...", Colors.CYAN))
+                stream = ollama.chat(model=model_name, messages=messages, stream=True)
+                final_response = handle_ollama_stream(stream)
+                if final_response:
+                    db.add_message(conversation_id, "assistant", final_response)
+            else:
+                # Normal response
+                print(msg['content'])
+                db.add_message(conversation_id, "assistant", msg['content'])
+        else:
+            # Standard streaming
+            stream = ollama.chat(model=model_name, messages=messages, stream=True)
+            response = handle_ollama_stream(stream)
+            if response:
+                db.add_message(conversation_id, "assistant", response)
+
     except Exception as e:
-        print() # Newline
+        print()
         print_error(f"Error: {e}")
 
-def run_chat_mode(model_name: str, initial_prompt: str | None, initial_images: list[str] | None, conversation_id: int | None = None):
+def run_chat_mode(model_name: str, initial_prompt: str | None, initial_images: list[str] | None, conversation_id: int | None = None, use_tools: bool = False):
     """Runs an interactive chat session."""
     print(colored(f"Entering chat mode with '{model_name}'.", Colors.GREEN))
+    if use_tools:
+        print(colored("🛠️  Agent Mode Enabled: AI can read/write files and run commands.", Colors.MAGENTA))
     print("Type 'quit' or 'exit' to end the session.")
 
     if conversation_id:
@@ -49,28 +120,60 @@ def run_chat_mode(model_name: str, initial_prompt: str | None, initial_images: l
         messages = []
         conversation_id = db.create_conversation(model_name)
 
+    tool_defs = tools.TOOL_DEFINITIONS if use_tools else None
+
+    # Helper to process response loop (Assistant -> [Tool -> Assistant]*)
+    def process_turn(msgs):
+        try:
+            if use_tools:
+                # First call: No stream to catch tools
+                response = ollama.chat(model=model_name, messages=msgs, tools=tool_defs, stream=False)
+                msg = response['message']
+                
+                msgs.append(msg) # Add assistant response (content or tool call)
+                
+                if msg.get('tool_calls'):
+                    execute_tool_calls(msg['tool_calls'], msgs)
+                    # Recursive call? Or just loop? Let's loop until no tools.
+                    # Simple version: 1-level depth (Tool -> Final Answer). 
+                    # Complex agents loop. Let's do a simple follow-up stream.
+                    
+                    print(colored("Assistant: ", Colors.BLUE), end="")
+                    stream = ollama.chat(model=model_name, messages=msgs, stream=True)
+                    return handle_ollama_stream(stream)
+                else:
+                    print(colored("Assistant: ", Colors.BLUE), end="")
+                    print(msg['content'])
+                    return msg['content']
+            else:
+                print(colored("Assistant: ", Colors.BLUE), end="")
+                stream = ollama.chat(model=model_name, messages=msgs, stream=True)
+                return handle_ollama_stream(stream)
+        except Exception as e:
+            print_error(f"Error: {e}")
+            return None
+
+    # Handle Initial Prompt
     if initial_prompt or initial_images:
         if not initial_prompt:
             initial_prompt = "Describe this image."
 
         print(colored(f"🤖 [{model_name}] Thinking...", Colors.CYAN))
-        print(colored("Assistant: ", Colors.BLUE), end="")
-
+        
         user_message = {'role': 'user', 'content': initial_prompt, 'images': initial_images or None}
         messages.append(user_message)
         db.add_message(conversation_id, "user", initial_prompt, initial_images or None)
-
-        try:
-            stream = ollama.chat(model=model_name, messages=messages, stream=True)
-            assistant_response = handle_ollama_stream(stream)
-            if assistant_response:
-                messages.append({'role': 'assistant', 'content': assistant_response})
-                db.add_message(conversation_id, "assistant", assistant_response)
-        except Exception as e:
-            print() # Newline
-            print_error(f"Error: {e}")
+        
+        resp = process_turn(messages)
+        if resp:
+            # Note: We aren't saving intermediate tool messages to DB yet to keep history clean/simple for now
+            # Only the final text response. 
+            # Ideally, we should save everything, but peewee schema needs update for structured msgs.
+            db.add_message(conversation_id, "assistant", resp)
+        else:
             messages.pop()
 
+    # Main Loop
     while True:
         try:
             user_input = input(colored("\nYou: ", Colors.GREEN))
@@ -78,16 +181,13 @@ def run_chat_mode(model_name: str, initial_prompt: str | None, initial_images: l
                 break
 
             print(colored(f"🤖 [{model_name}] Thinking...", Colors.CYAN))
-            print(colored("Assistant: ", Colors.BLUE), end="")
 
             messages.append({'role': 'user', 'content': user_input})
             db.add_message(conversation_id, "user", user_input)
 
-            stream = ollama.chat(model=model_name, messages=messages, stream=True)
-            assistant_response = handle_ollama_stream(stream)
-            if assistant_response:
-                messages.append({'role': 'assistant', 'content': assistant_response})
-                db.add_message(conversation_id, "assistant", assistant_response)
+            resp = process_turn(messages)
+            if resp:
+                db.add_message(conversation_id, "assistant", resp)
             else:
                 messages.pop()
 
@@ -97,7 +197,7 @@ def run_chat_mode(model_name: str, initial_prompt: str | None, initial_images: l
             print(colored("\nChat session interrupted.", Colors.YELLOW))
             break
         except Exception as e:
-            print() # Newline
+            print()
             print_error(f"Error: {e}")
             if messages and messages[-1]['role'] == 'user':
                 messages.pop()
