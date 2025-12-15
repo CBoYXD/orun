@@ -4,6 +4,8 @@ import sys
 
 from orun import commands, core, db, utils
 from orun.utils import Colors, colored, print_error, print_warning
+from prompt_toolkit import print_formatted_text
+from prompt_toolkit.formatted_text import HTML, ANSI
 
 
 @utils.handle_cli_errors
@@ -76,9 +78,9 @@ def main():
 
             if not model_name:
                 print_error("No active model set.")
-                print(
+                print_formatted_text(HTML(
                     f"Please specify a model with {colored('-m <model>', Colors.YELLOW)} or set a default with {colored('orun set-active <model>', Colors.YELLOW)}"
-                )
+                ))
                 return
 
             if args.model:
@@ -198,9 +200,9 @@ def main():
 
     if not model_name:
         print_error("No active model set.")
-        print(
+        print_formatted_text(HTML(
             f"Please specify a model with {colored('-m <model>', Colors.YELLOW)} or set a default with {colored('orun set-active <model>', Colors.YELLOW)}"
-        )
+        ))
         return
 
     user_prompt = " ".join(args.prompt) if args.prompt else ""
@@ -221,7 +223,7 @@ if __name__ == "__main__":
     try:
         main()
     except KeyboardInterrupt:
-        print("\n\n👋 Goodbye!")
+        print_formatted_text(HTML("\n\n👋 Goodbye!"))
         try:
             sys.exit(0)
         except SystemExit:

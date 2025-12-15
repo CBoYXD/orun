@@ -1,5 +1,7 @@
 from orun import core, db
 from orun.utils import Colors, colored, print_error, print_success
+from prompt_toolkit import print_formatted_text
+from prompt_toolkit.formatted_text import HTML, ANSI
 
 
 def cmd_models():
@@ -7,7 +9,7 @@ def cmd_models():
     models = db.get_models()
     active_model = db.get_active_model()
 
-    print(colored("\nAvailable Models:", Colors.YELLOW))
+    print_formatted_text(HTML(colored("\nAvailable Models:", Colors.YELLOW)))
     if not models:
         print("  No models found.")
         return
@@ -19,21 +21,21 @@ def cmd_models():
         if model_name == active_model:
             marker = colored(" (active)", Colors.MAGENTA)
 
-        print(
-            f"  {colored(f'{alias:<{max_alias_len}}', Colors.GREEN)} : {colored(model_name, Colors.BLUE)}{marker}"
+        print_formatted_text(
+            HTML(f"  {colored(f'{alias:<{max_alias_len}}', Colors.GREEN)} : {colored(model_name, Colors.BLUE)}{marker}")
         )
 
-    print(colored("\nUse -m <alias> to select a model.", Colors.YELLOW))
+    print_formatted_text(HTML(colored("\nUse -m <alias> to select a model.", Colors.YELLOW)))
 
 
 def cmd_history(limit: int = 10):
     """Prints recent conversations."""
     conversations = db.get_recent_conversations(limit)
     if not conversations:
-        print(colored("No conversations found.", Colors.YELLOW))
+        print_formatted_text(HTML(colored("No conversations found.", Colors.YELLOW)))
         return
 
-    print(colored("\nRecent Conversations:", Colors.YELLOW))
+    print_formatted_text(HTML(colored("\nRecent Conversations:", Colors.YELLOW)))
     # Reverse to show oldest first (within the recent limit), so newest is at the bottom
     for conv in reversed(conversations):
         messages = db.get_conversation_messages(conv["id"])
@@ -42,11 +44,11 @@ def cmd_history(limit: int = 10):
             if messages and len(messages[0]["content"]) > 50
             else (messages[0]["content"] if messages else "Empty")
         )
-        print(
-            f"  {colored(f'{conv["id"]:>3}', Colors.GREEN)} | {colored(f'{conv["model"]:<20}', Colors.BLUE)} | {first_msg}"
+        print_formatted_text(
+            HTML(f"  {colored(f'{conv['id']:>3}', Colors.GREEN)} | {colored(f'{conv['model']:<20}', Colors.BLUE)} | {first_msg}")
         )
 
-    print(colored("\nUse 'orun c <id>' to continue a conversation.", Colors.YELLOW))
+    print_formatted_text(HTML(colored("\nUse 'orun c <id>' to continue a conversation.", Colors.YELLOW)))
 
 
 def cmd_continue(
@@ -70,7 +72,7 @@ def cmd_continue(
         # We can still print the message here or let run_chat_mode do it?
         # run_chat_mode doesn't print "YOLO MODE ENABLED" explicitly on start, only yolo.toggle does.
         # But wait, run_chat_mode prints special commands.
-        print(colored("🔥 YOLO MODE ENABLED", Colors.RED))
+        print_formatted_text(HTML(colored("🔥 YOLO MODE ENABLED", Colors.RED)))
 
     core.run_chat_mode(
         model_name,
@@ -107,7 +109,7 @@ def cmd_last(
 
 def cmd_refresh():
     """Syncs models from Ollama."""
-    print(colored("🔄 Syncing models from Ollama...", Colors.CYAN))
+    print_formatted_text(HTML(colored("🔄 Syncing models from Ollama...", Colors.CYAN)))
     db.refresh_ollama_models()
 
 

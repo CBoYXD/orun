@@ -4,40 +4,46 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+import html
 
 import ollama
+from prompt_toolkit import print_formatted_text
+from prompt_toolkit.formatted_text import HTML
 
 
 class Colors:
-    RED = "\033[91m"
-    GREEN = "\033[92m"
-    YELLOW = "\033[93m"
-    BLUE = "\033[94m"
-    MAGENTA = "\033[95m"
-    CYAN = "\033[96m"
-    GREY = "\033[90m"
-    RESET = "\033[0m"
+    RED = "ansired"
+    GREEN = "ansigreen"
+    YELLOW = "ansiyellow"
+    BLUE = "ansiblue"
+    MAGENTA = "ansimagenta"
+    CYAN = "ansicyan"
+    GREY = "ansigray" # 'gray' or 'brightblack' depending on PT version, 'ansigray' works usually or 'gray'
+    # prompt_toolkit uses 'gray' or '#888888'. Let's use 'gray'.
+    RESET = "" # Not needed for HTML tags, closing tag handles it
 
 
 def colored(text: str, color: str) -> str:
-    """Wraps text in color codes."""
-    return f"{color}{text}{Colors.RESET}"
+    """Wraps text in HTML color tags for prompt_toolkit."""
+    if color == Colors.GREY:
+        color = "gray" # fix map
+    return f"<{color}>{html.escape(str(text))}</{color}>"
 
 
 def print_error(msg: str):
-    print(colored(f"❌ {msg}", Colors.RED))
+    print_formatted_text(HTML(colored(f"❌ {msg}", Colors.RED)))
 
 
 def print_success(msg: str):
-    print(colored(f"✅ {msg}", Colors.GREEN))
+    print_formatted_text(HTML(colored(f"✅ {msg}", Colors.GREEN)))
 
 
 def print_warning(msg: str):
-    print(colored(f"⚠️ {msg}", Colors.YELLOW))
+    print_formatted_text(HTML(colored(f"⚠️ {msg}", Colors.YELLOW)))
 
 
 def print_info(msg: str):
-    print(colored(msg, Colors.CYAN))
+    print_formatted_text(HTML(colored(msg, Colors.CYAN)))
 
 
 def ensure_ollama_running():
@@ -71,8 +77,8 @@ def ensure_ollama_running():
                 )
 
             # Wait for it to become ready
-            print(
-                colored("Waiting for Ollama to start...", Colors.GREY),
+            print_formatted_text(
+                HTML(colored("Waiting for Ollama to start...", Colors.GREY)),
                 end="",
                 flush=True,
             )
@@ -193,5 +199,5 @@ def get_image_paths(image_args: list[str] | None) -> list[str]:
             path = get_screenshot_path(idx)
             if path:
                 image_paths.append(path)
-                print(colored(f"🖼️  Added: {os.path.basename(path)}", Colors.GREY))
+                print_formatted_text(HTML(colored(f"🖼️  Added: {os.path.basename(path)}", Colors.GREY)))
     return image_paths

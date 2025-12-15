@@ -1,6 +1,8 @@
 import json
 import re
 from pathlib import Path
+from prompt_toolkit import print_formatted_text
+from prompt_toolkit.formatted_text import HTML
 
 from .utils import Colors, colored
 
@@ -122,7 +124,7 @@ class YoloMode:
             with open(self.config_path, "w") as f:
                 json.dump(default_config, f, indent=2)
         except Exception as e:
-            print(colored(f"Error creating config: {e}", Colors.RED))
+            print_formatted_text(HTML(colored(f"Error creating config: {e}", Colors.RED)))
 
     def load_config(self):
         """Load forbidden and whitelisted commands from JSON config."""
@@ -136,7 +138,7 @@ class YoloMode:
                         "whitelisted_commands", []
                     )
         except Exception as e:
-            print(colored(f"Warning: Could not load config: {e}", Colors.YELLOW))
+            print_formatted_text(HTML(colored(f"Warning: Could not load config: {e}", Colors.YELLOW)))
 
     def toggle(self, show_message=True):
         """Toggle YOLO mode on/off."""
@@ -146,28 +148,28 @@ class YoloMode:
 
         if show_message:
             print()
-            print(colored(f"🔥 YOLO MODE {status}", mode_color))
+            print_formatted_text(HTML(colored(f"🔥 YOLO MODE {status}", mode_color)))
             if self.yolo_active:
-                print(
-                    colored(
+                print_formatted_text(
+                    HTML(colored(
                         "⚠️  All commands will execute without confirmation!",
                         Colors.YELLOW,
-                    )
+                    ))
                 )
-                print(
-                    colored(
+                print_formatted_text(
+                    HTML(colored(
                         "   (Forbidden commands will still be blocked)", Colors.GREY
-                    )
+                    ))
                 )
-                print(colored(f"   Config: {self.config_path}", Colors.GREY))
+                print_formatted_text(HTML(colored(f"   Config: {self.config_path}", Colors.GREY)))
             else:
-                print(colored("✅ Back to normal confirmation mode", Colors.GREEN))
+                print_formatted_text(HTML(colored("✅ Back to normal confirmation mode", Colors.GREEN)))
             print()
 
     def reload_config(self):
         """Reload configuration from file."""
         self.load_config()
-        print(colored(f"✅ Config reloaded from {self.config_path}", Colors.GREEN))
+        print_formatted_text(HTML(colored(f"✅ Config reloaded from {self.config_path}", Colors.GREEN)))
 
     def is_command_allowed(self, command: str) -> tuple[bool, str]:
         """
