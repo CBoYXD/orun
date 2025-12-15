@@ -11,6 +11,12 @@ dependencies = [
 [project.scripts]
 orun = "orun.main:main"
 
+[project.urls]
+Homepage = "https://github.com/CBoYXD/orun"
+Repository = "https://github.com/CBoYXD/orun"
+Issues = "https://github.com/CBoYXD/orun/issues"
+Documentation = "https://github.com/CBoYXD/orun/blob/main/README.md"
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
