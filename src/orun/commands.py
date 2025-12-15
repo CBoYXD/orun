@@ -30,7 +30,8 @@ def cmd_history(limit: int = 10):
         return
 
     print(colored("\nRecent Conversations:", Colors.YELLOW))
-    for conv in conversations:
+    # Reverse to show oldest first (within the recent limit), so newest is at the bottom
+    for conv in reversed(conversations):
         messages = db.get_conversation_messages(conv["id"])
         first_msg = messages[0]["content"][:50] + "..." if messages and len(messages[0]["content"]) > 50 else (messages[0]["content"] if messages else "Empty")
         print(f"  {colored(f'{conv['id']:>3}', Colors.GREEN)} | {colored(f'{conv['model']:<20}', Colors.BLUE)} | {first_msg}")
