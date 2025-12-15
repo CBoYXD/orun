@@ -1,10 +1,12 @@
-import sys
-import os
 import functools
-import time
+import os
 import subprocess
+import sys
+import time
 from pathlib import Path
+
 import ollama
+
 
 class Colors:
     RED = "\033[91m"
@@ -16,27 +18,33 @@ class Colors:
     GREY = "\033[90m"
     RESET = "\033[0m"
 
+
 def colored(text: str, color: str) -> str:
     """Wraps text in color codes."""
     return f"{color}{text}{Colors.RESET}"
 
+
 def print_error(msg: str):
     print(colored(f"❌ {msg}", Colors.RED))
+
 
 def print_success(msg: str):
     print(colored(f"✅ {msg}", Colors.GREEN))
 
+
 def print_warning(msg: str):
     print(colored(f"⚠️ {msg}", Colors.YELLOW))
 
+
 def print_info(msg: str):
     print(colored(msg, Colors.CYAN))
+
 
 def ensure_ollama_running():
     """Checks if Ollama is running and attempts to start it if not."""
     try:
         # Quick check with a short timeout to avoid hanging if server is weird
-        # ollama.list() doesn't support timeout natively in the python client usually, 
+        # ollama.list() doesn't support timeout natively in the python client usually,
         # but it uses httpx, so it might fail fast if port is closed.
         ollama.list()
         return
@@ -49,34 +57,40 @@ def ensure_ollama_running():
             if sys.platform == "win32":
                 # Using shell=True and 'start' command to detach properly on Windows
                 subprocess.Popen(
-                    "start /B ollama serve", 
+                    "start /B ollama serve",
                     shell=True,
-                    stdout=subprocess.DEVNULL, 
-                    stderr=subprocess.DEVNULL
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
                 )
             else:
                 subprocess.Popen(
-                    ["ollama", "serve"], 
-                    stdout=subprocess.DEVNULL, 
+                    ["ollama", "serve"],
+                    stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL,
-                    start_new_session=True
+                    start_new_session=True,
                 )
-            
+
             # Wait for it to become ready
-            print(colored("Waiting for Ollama to start...", Colors.GREY), end="", flush=True)
-            for _ in range(5): # Wait up to 5 seconds (reduced from 10)
+            print(
+                colored("Waiting for Ollama to start...", Colors.GREY),
+                end="",
+                flush=True,
+            )
+            for _ in range(5):  # Wait up to 5 seconds (reduced from 10)
                 try:
                     time.sleep(1)
                     ollama.list()
-                    print() # Newline
+                    print()  # Newline
                     print_success("Ollama started successfully.")
                     return
                 except Exception:
                     print(".", end="", flush=True)
-            
+
             print()
             print_error("Timed out waiting for Ollama to start.")
-            print_info("Please start Ollama manually (run 'ollama serve' or open the app).")
+            print_info(
+                "Please start Ollama manually (run 'ollama serve' or open the app)."
+            )
             sys.exit(1)
 
         except FileNotFoundError:
@@ -87,8 +101,10 @@ def ensure_ollama_running():
             print_error(f"Failed to start Ollama: {e}")
             sys.exit(1)
 
+
 def handle_cli_errors(func):
     """Decorator to handle KeyboardInterrupt and general exceptions gracefully."""
+
     @functools.wraps(func)
     def wrapper(*args, **kwargs):
         try:
@@ -97,21 +113,22 @@ def handle_cli_errors(func):
             print("\n\n👋 Goodbye!")
             sys.exit(0)
         except Exception as e:
-            print() # Newline
+            print()  # Newline
             print_error(f"An unexpected error occurred: {e}")
             sys.exit(1)
+
     return wrapper
 
+
 # Configuration
-SCREENSHOT_DIRS = [
-    Path.home() / "Pictures" / "Screenshots",
-    Path.home() / "Pictures"
-]
+SCREENSHOT_DIRS = [Path.home() / "Pictures" / "Screenshots", Path.home() / "Pictures"]
+
 
 def setup_console():
     """Configures the console for proper emoji support on Windows."""
     if sys.platform == "win32":
-        sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
 
 def get_screenshot_path(index: int) -> str | None:
     """Finds a screenshot by index (1-based, newest first)."""
@@ -132,6 +149,7 @@ def get_screenshot_path(index: int) -> str | None:
 
     return str(files[index - 1])
 
+
 def parse_image_indices(image_args: list[str]) -> list[int]:
     """Parses flexible image arguments (e.g., '1', '1,2', '3x')."""
     indices = set()
@@ -140,14 +158,14 @@ def parse_image_indices(image_args: list[str]) -> list[int]:
 
     for arg in image_args:
         arg = str(arg).lower()
-        if 'x' in arg:
+        if "x" in arg:
             try:
-                count = int(arg.replace('x', ''))
+                count = int(arg.replace("x", ""))
                 indices.update(range(1, count + 1))
             except ValueError:
                 print_error(f"Invalid range format: '{arg}'")
-        elif ',' in arg:
-            parts = arg.split(',')
+        elif "," in arg:
+            parts = arg.split(",")
             for part in parts:
                 try:
                     indices.add(int(part))
@@ -160,6 +178,7 @@ def parse_image_indices(image_args: list[str]) -> list[int]:
                 print_error(f"Invalid index: '{arg}'")
 
     return sorted(list(indices))
+
 
 def get_image_paths(image_args: list[str] | None) -> list[str]:
     """Resolves image arguments to file paths."""

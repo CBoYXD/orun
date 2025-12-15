@@ -1,8 +1,9 @@
 import json
 import re
 from pathlib import Path
-from .utils import colored, Colors
-from pynput import keyboard
+
+from .utils import Colors, colored
+
 
 class YoloMode:
     def __init__(self):
@@ -11,7 +12,7 @@ class YoloMode:
         self.config_path = self.config_dir / "config.json"
         self.forbidden_commands = []
         self.whitelisted_commands = []
-        self.listener = None
+        # self.listener = None # Removed pynput listener
 
         # Create .orun directory if it doesn't exist
         self.config_dir.mkdir(parents=True, exist_ok=True)
@@ -22,39 +23,7 @@ class YoloMode:
 
         self.load_config()
 
-    def start_hotkey_listener(self):
-        """Start global hotkey listener for Ctrl+Y."""
-        if self.listener is not None:
-            return
-
-        try:
-            def on_press(key):
-                # Check for Ctrl+Y
-                try:
-                    # Check if Ctrl is pressed and Y is pressed
-                    if key == keyboard.KeyCode.from_char('y') and keyboard.Key.ctrl in keyboard.Controller().pressed_keys:
-                        self.toggle(show_message=True)
-                except:
-                    # Alternative check method
-                    if hasattr(key, 'char') and key.char == 'y':
-                        self.toggle(show_message=True)
-
-            # Start listener in a separate thread
-            self.listener = keyboard.Listener(on_press=on_press)
-            self.listener.daemon = True
-            self.listener.start()
-        except Exception as e:
-            # Fail silently if hotkey doesn't work
-            print(colored(f"Could not start hotkey listener: {e}", Colors.YELLOW))
-
-    def stop_hotkey_listener(self):
-        """Stop the hotkey listener."""
-        if self.listener is not None:
-            try:
-                self.listener.stop()
-                self.listener = None
-            except:
-                pass
+    # Removed start_hotkey_listener and stop_hotkey_listener methods
 
     def create_default_config(self):
         """Create a default configuration file."""
@@ -79,7 +48,7 @@ class YoloMode:
                     "curl -X DELETE",
                     "wget -O /dev/null",
                     "> /dev/sda",
-                    "pip uninstall"
+                    "pip uninstall",
                 ],
                 "whitelisted_commands": [
                     "ls",
@@ -144,13 +113,13 @@ class YoloMode:
                     "type",
                     "man",
                     "tldr",
-                    "help"
-                ]
+                    "help",
+                ],
             }
         }
 
         try:
-            with open(self.config_path, 'w') as f:
+            with open(self.config_path, "w") as f:
                 json.dump(default_config, f, indent=2)
         except Exception as e:
             print(colored(f"Error creating config: {e}", Colors.RED))
@@ -159,11 +128,13 @@ class YoloMode:
         """Load forbidden and whitelisted commands from JSON config."""
         try:
             if self.config_path.exists():
-                with open(self.config_path, 'r') as f:
+                with open(self.config_path, "r") as f:
                     config = json.load(f)
-                    yolo_config = config.get('yolo', {})
-                    self.forbidden_commands = yolo_config.get('forbidden_commands', [])
-                    self.whitelisted_commands = yolo_config.get('whitelisted_commands', [])
+                    yolo_config = config.get("yolo", {})
+                    self.forbidden_commands = yolo_config.get("forbidden_commands", [])
+                    self.whitelisted_commands = yolo_config.get(
+                        "whitelisted_commands", []
+                    )
         except Exception as e:
             print(colored(f"Warning: Could not load config: {e}", Colors.YELLOW))
 
@@ -177,8 +148,17 @@ class YoloMode:
             print()
             print(colored(f"🔥 YOLO MODE {status}", mode_color))
             if self.yolo_active:
-                print(colored("⚠️  All commands will execute without confirmation!", Colors.YELLOW))
-                print(colored("   (Forbidden commands will still be blocked)", Colors.GREY))
+                print(
+                    colored(
+                        "⚠️  All commands will execute without confirmation!",
+                        Colors.YELLOW,
+                    )
+                )
+                print(
+                    colored(
+                        "   (Forbidden commands will still be blocked)", Colors.GREY
+                    )
+                )
                 print(colored(f"   Config: {self.config_path}", Colors.GREY))
             else:
                 print(colored("✅ Back to normal confirmation mode", Colors.GREEN))
@@ -203,12 +183,12 @@ class YoloMode:
 
         # Check for potentially dangerous patterns not in the list
         dangerous_patterns = [
-            r'rm\s+(-rf|--recursive)?\s+/',
-            r'chmod\s+[0-9]{3,4}\s+/',
-            r'chown\s+.*\s+/',
-            r'dd\s+if=.*\s+of=.',
-            r':\(\)\s*\{\s*:\|:&\s*\}\s*;',
-            r'sudo\s+.*\s+(rm|chmod|chown|dd)',
+            r"rm\s+(-rf|--recursive)?\s+/",
+            r"chmod\s+[0-9]{3,4}\s+/",
+            r"chown\s+.*\s+/",
+            r"dd\s+if=.*\s+of=.",
+            r":\(\)\s*\{\s*:\|:&\s*\}\s*;",
+            r"sudo\s+.*\s+(rm|chmod|chown|dd)",
         ]
 
         for pattern in dangerous_patterns:
@@ -242,16 +222,20 @@ class YoloMode:
         Determine if confirmation should be skipped.
         Returns (skip, reason)
         """
-        if not self.yolo_active:
-            return False, ""
-
-        # Check if command is forbidden
-        allowed, reason = self.is_command_allowed(command)
-        if not allowed:
-            return False, f"❌ BLOCKED: {reason}"
+        # If command is whitelisted, always skip confirmation
+        if self.is_command_whitelisted(command):
+            return True, "✅ WHITELISTED: Executing without confirmation"
 
         # If YOLO mode is active, skip confirmation for allowed commands
-        return True, "🔥 YOLO MODE: Executing without confirmation"
+        if self.yolo_active:
+            # Check if command is forbidden
+            allowed, reason = self.is_command_allowed(command)
+            if not allowed:
+                return False, f"❌ BLOCKED: {reason}"
+            return True, "🔥 YOLO MODE: Executing without confirmation"
+
+        return False, ""
+
 
 # Global instance
 yolo_mode = YoloMode()

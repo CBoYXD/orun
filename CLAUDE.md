@@ -87,10 +87,13 @@ User confirmation is required for execution.
 YOLO Mode allows the AI to execute shell commands without asking for confirmation, making interactions much faster. However, dangerous commands are still blocked for safety.
 
 ### How to Use YOLO Mode
-1. **In Chat Mode**:
+1. **In Chat Mode** (always available):
    - Type `/yolo` to toggle YOLO mode on/off
    - Type `/reload-yolo` to reload configuration after editing the config file
+   - Press `Ctrl+Y` as a hotkey to toggle YOLO mode
 2. **For Single Commands**: Use the `--yolo` flag
+
+Note: YOLO mode affects only tool-based commands (shell commands, file operations, etc.).
 
 ### Command Examples
 ```bash

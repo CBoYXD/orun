@@ -1,9 +1,25 @@
-from pathlib import Path
 from datetime import datetime
+from pathlib import Path
 
-from peewee import SqliteDatabase, Model, CharField, TextField, ForeignKeyField, DateTimeField, BooleanField
 import ollama
-from orun.utils import Colors, colored, print_warning, print_success, print_error, print_info, ensure_ollama_running
+from peewee import (
+    BooleanField,
+    CharField,
+    DateTimeField,
+    ForeignKeyField,
+    Model,
+    SqliteDatabase,
+    TextField,
+)
+
+from orun.utils import (
+    Colors,
+    colored,
+    ensure_ollama_running,
+    print_error,
+    print_success,
+    print_warning,
+)
 
 DB_DIR = Path.home() / ".orun"
 DB_PATH = DB_DIR / "main.db"
@@ -24,7 +40,9 @@ class Conversation(BaseModel):
 
 
 class Message(BaseModel):
-    conversation = ForeignKeyField(Conversation, backref='messages', on_delete='CASCADE')
+    conversation = ForeignKeyField(
+        Conversation, backref="messages", on_delete="CASCADE"
+    )
     role = CharField()
     content = TextField()
     images = TextField(null=True)
@@ -42,44 +60,48 @@ def initialize():
     """Initialize database connection and tables."""
     db.connect(reuse_if_open=True)
     db.create_tables([Conversation, Message, AIModel])
-    
+
     # Migration: Ensure is_active column exists
     try:
-        db.execute_sql('SELECT is_active FROM aimodel LIMIT 1')
+        db.execute_sql("SELECT is_active FROM aimodel LIMIT 1")
     except Exception:
-        db.execute_sql('ALTER TABLE aimodel ADD COLUMN is_active BOOLEAN DEFAULT 0')
+        db.execute_sql("ALTER TABLE aimodel ADD COLUMN is_active BOOLEAN DEFAULT 0")
 
 
 def refresh_ollama_models():
     """Syncs models from Ollama to the database.
-    
+
     - Adds new models with shortcut = full_name.
     - Preserves existing models and their shortcuts.
     """
     ensure_ollama_running()
     try:
         ollama_response = ollama.list()
-        if ollama_response and ollama_response.get('models'):
+        if ollama_response and ollama_response.get("models"):
             current_full_names = {m.full_name for m in AIModel.select()}
             current_shortcuts = {m.shortcut for m in AIModel.select()}
             new_models_data = []
-            
-            for m in ollama_response['models']:
-                full_name = m['name']
+
+            for m in ollama_response["models"]:
+                full_name = m["name"]
                 if full_name not in current_full_names:
                     # Check if shortcut is taken by another model
                     if full_name in current_shortcuts:
-                        print_warning(f"Model '{full_name}' found in Ollama but its name conflicts with an existing shortcut. Skipping auto-add.")
+                        print_warning(
+                            f"Model '{full_name}' found in Ollama but its name conflicts with an existing shortcut. Skipping auto-add."
+                        )
                         continue
-                    new_models_data.append({"full_name": full_name, "shortcut": full_name})
-            
+                    new_models_data.append(
+                        {"full_name": full_name, "shortcut": full_name}
+                    )
+
             if new_models_data:
                 with db.atomic():
                     AIModel.insert_many(new_models_data).execute()
                 print_success(f"Synced {len(new_models_data)} new models from Ollama.")
             else:
                 print(colored("No new models to sync.", Colors.GREY))
-                
+
     except Exception as e:
         print_error(f"Could not refresh Ollama models: {e}")
 
@@ -91,10 +113,10 @@ def update_model_shortcut(identifier: str, new_shortcut: str) -> bool:
     if not model:
         # Try finding by shortcut
         model = AIModel.get_or_none(AIModel.shortcut == identifier)
-    
+
     if not model:
         return False
-        
+
     try:
         model.shortcut = new_shortcut
         model.save()
@@ -131,22 +153,27 @@ def create_conversation(model: str) -> int:
     return conversation.id
 
 
-def add_message(conversation_id: int, role: str, content: str, images: list[str] | None = None):
+def add_message(
+    conversation_id: int, role: str, content: str, images: list[str] | None = None
+):
     """Add a message to a conversation."""
     images_str = ",".join(images) if images else None
     Message.create(
-        conversation_id=conversation_id,
-        role=role,
-        content=content,
-        images=images_str
+        conversation_id=conversation_id, role=role, content=content, images=images_str
     )
-    Conversation.update(updated_at=datetime.now()).where(Conversation.id == conversation_id).execute()
+    Conversation.update(updated_at=datetime.now()).where(
+        Conversation.id == conversation_id
+    ).execute()
 
 
 def get_conversation_messages(conversation_id: int) -> list[dict]:
     """Get all messages for a conversation."""
     messages = []
-    for msg in Message.select().where(Message.conversation_id == conversation_id).order_by(Message.id):
+    for msg in (
+        Message.select()
+        .where(Message.conversation_id == conversation_id)
+        .order_by(Message.id)
+    ):
         m = {"role": msg.role, "content": msg.content}
         if msg.images:
             m["images"] = msg.images.split(",")
@@ -157,13 +184,17 @@ def get_conversation_messages(conversation_id: int) -> list[dict]:
 def get_recent_conversations(limit: int = 10) -> list[dict]:
     """Get recent conversations."""
     conversations = []
-    for conv in Conversation.select().order_by(Conversation.updated_at.desc()).limit(limit):
-        conversations.append({
-            "id": conv.id,
-            "model": conv.model,
-            "created_at": conv.created_at.isoformat(),
-            "updated_at": conv.updated_at.isoformat()
-        })
+    for conv in (
+        Conversation.select().order_by(Conversation.updated_at.desc()).limit(limit)
+    ):
+        conversations.append(
+            {
+                "id": conv.id,
+                "model": conv.model,
+                "created_at": conv.created_at.isoformat(),
+                "updated_at": conv.updated_at.isoformat(),
+            }
+        )
     return conversations
 
 
@@ -182,5 +213,5 @@ def get_conversation(conversation_id: int) -> dict | None:
         "id": conv.id,
         "model": conv.model,
         "created_at": conv.created_at.isoformat(),
-        "updated_at": conv.updated_at.isoformat()
+        "updated_at": conv.updated_at.isoformat(),
     }
