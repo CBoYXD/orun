@@ -3,7 +3,7 @@ from datetime import datetime
 
 from peewee import SqliteDatabase, Model, CharField, TextField, ForeignKeyField, DateTimeField, BooleanField
 import ollama
-from orun.utils import Colors, colored, print_warning, print_success, print_error, print_info
+from orun.utils import Colors, colored, print_warning, print_success, print_error, print_info, ensure_ollama_running
 
 DB_DIR = Path.home() / ".orun"
 DB_PATH = DB_DIR / "history.db"
@@ -56,6 +56,7 @@ def refresh_ollama_models():
     - Adds new models with shortcut = full_name.
     - Preserves existing models and their shortcuts.
     """
+    ensure_ollama_running()
     try:
         ollama_response = ollama.list()
         if ollama_response and ollama_response.get('models'):

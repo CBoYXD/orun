@@ -1,7 +1,10 @@
 import sys
 import os
 import functools
+import time
+import subprocess
 from pathlib import Path
+import ollama
 
 class Colors:
     RED = "\033[91m"
@@ -28,6 +31,61 @@ def print_warning(msg: str):
 
 def print_info(msg: str):
     print(colored(msg, Colors.CYAN))
+
+def ensure_ollama_running():
+    """Checks if Ollama is running and attempts to start it if not."""
+    try:
+        # Quick check with a short timeout to avoid hanging if server is weird
+        # ollama.list() doesn't support timeout natively in the python client usually, 
+        # but it uses httpx, so it might fail fast if port is closed.
+        ollama.list()
+        return
+    except Exception:
+        print_warning("Ollama is not running.")
+        print_info("Attempting to start Ollama server...")
+
+        try:
+            # Start in background
+            if sys.platform == "win32":
+                # Using shell=True and 'start' command to detach properly on Windows
+                subprocess.Popen(
+                    "start /B ollama serve", 
+                    shell=True,
+                    stdout=subprocess.DEVNULL, 
+                    stderr=subprocess.DEVNULL
+                )
+            else:
+                subprocess.Popen(
+                    ["ollama", "serve"], 
+                    stdout=subprocess.DEVNULL, 
+                    stderr=subprocess.DEVNULL,
+                    start_new_session=True
+                )
+            
+            # Wait for it to become ready
+            print(colored("Waiting for Ollama to start...", Colors.GREY), end="", flush=True)
+            for _ in range(5): # Wait up to 5 seconds (reduced from 10)
+                try:
+                    time.sleep(1)
+                    ollama.list()
+                    print() # Newline
+                    print_success("Ollama started successfully.")
+                    return
+                except Exception:
+                    print(".", end="", flush=True)
+            
+            print()
+            print_error("Timed out waiting for Ollama to start.")
+            print_info("Please start Ollama manually (run 'ollama serve' or open the app).")
+            sys.exit(1)
+
+        except FileNotFoundError:
+            print_error("Ollama executable not found in PATH.")
+            print_info("Please install Ollama from https://ollama.com/")
+            sys.exit(1)
+        except Exception as e:
+            print_error(f"Failed to start Ollama: {e}")
+            sys.exit(1)
 
 def handle_cli_errors(func):
     """Decorator to handle KeyboardInterrupt and general exceptions gracefully."""

@@ -62,6 +62,7 @@ def execute_tool_calls(tool_calls, messages):
 
 def run_single_shot(model_name: str, user_prompt: str, image_paths: list[str] | None, use_tools: bool = False):
     """Handles a single query to the model."""
+    utils.ensure_ollama_running()
     print(colored(f"🤖 [{model_name}] Thinking...", Colors.CYAN))
 
     conversation_id = db.create_conversation(model_name)
@@ -108,6 +109,7 @@ def run_single_shot(model_name: str, user_prompt: str, image_paths: list[str] | 
 
 def run_chat_mode(model_name: str, initial_prompt: str | None, initial_images: list[str] | None, conversation_id: int | None = None, use_tools: bool = False):
     """Runs an interactive chat session."""
+    utils.ensure_ollama_running()
     print(colored(f"Entering chat mode with '{model_name}'.", Colors.GREEN))
     if use_tools:
         print(colored("🛠️  Agent Mode Enabled: AI can read/write files and run commands.", Colors.MAGENTA))
