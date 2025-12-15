@@ -10,8 +10,3 @@ publish message:
     git add .
     python scripts/git_commit_release.py "{{message}}"
     git push origin -f
-    uv build
-    uv pip install .
-    uv tool install . --force
-    @echo "Upgraded locally and globally!"
-    @echo "Done!"
