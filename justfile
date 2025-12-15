@@ -6,7 +6,8 @@ publish message:
     uv sync
     uv build
     uv publish
+    if (Test-Path dist) { Remove-Item -Recurse -Force dist }
     git add .
     python scripts/git_commit_release.py "{{message}}"
     git push origin -f
-    @echo "Done! Run 'git push' to push changes."
+    @echo "Done!"
