@@ -1,15 +1,15 @@
-import json
-
 import ollama
-from prompt_toolkit import prompt
-from prompt_toolkit.application import run_in_terminal
+import json
+import datetime
+from pathlib import Path
+from orun import db, utils, tools, prompts_manager
+from orun.utils import Colors, colored, print_error, print_warning, print_success, print_info
+from orun.yolo import yolo_mode
+from prompt_toolkit import prompt as pt_prompt
 from prompt_toolkit.formatted_text import HTML
 from prompt_toolkit.key_binding import KeyBindings
 from prompt_toolkit.keys import Keys
-
-from orun import db, tools, utils
-from orun.utils import Colors, colored, print_error, print_warning
-from orun.yolo import yolo_mode
+from prompt_toolkit.application import run_in_terminal
 
 
 def handle_ollama_stream(stream) -> str:
@@ -211,7 +211,14 @@ def run_chat_mode(
 
     print(colored("💡 Special commands (local, not sent to AI):", Colors.GREY))
     print(colored("   /yolo        - Toggle YOLO mode (no confirmations)", Colors.GREY))
-    print(colored("   /reload-yolo - Reload YOLO configuration", Colors.GREY))
+    print(colored("   /clear       - Clear conversation history", Colors.GREY))
+    print(colored("   /undo        - Undo last turn", Colors.GREY))
+    print(colored("   /save [file] - Save chat to Markdown", Colors.GREY))
+    print(colored("   /run <cmd>   - Run shell command directly", Colors.GREY))
+    print(colored("   /search <q>  - Search the web", Colors.GREY))
+    print(colored("   /explain     - Explain last context", Colors.GREY))
+    print(colored("   /role <name> - Switch persona", Colors.GREY))
+    print(colored("   /model <name>- Switch model", Colors.GREY))
     print(colored("   Ctrl+Y       - Toggle YOLO mode (hotkey)", Colors.GREY))
     if not use_tools:
         print(
@@ -313,7 +320,7 @@ def run_chat_mode(
             # Get user input with enhanced key bindings
             # Use prompt_toolkit for Ctrl+Y support
             try:
-                user_input = prompt(
+                user_input = pt_prompt(
                     HTML("<ansigreen>You: </ansigreen>"), key_bindings=kb
                 )
             except Exception:
@@ -333,17 +340,119 @@ def run_chat_mode(
                     continue
 
             # Handle special commands (these should not be sent to AI)
-            if user_input.strip() == "/yolo":
+            cmd_parts = user_input.strip().split(maxsplit=1)
+            cmd_root = cmd_parts[0].lower()
+            cmd_arg = cmd_parts[1] if len(cmd_parts) > 1 else ""
+
+            if cmd_root == "/yolo":
                 yolo_mode.toggle(show_message=True)
                 continue
 
-            if user_input.strip() == "/reload-yolo":
+            if cmd_root == "/reload-yolo":
                 yolo_mode.reload_config()
                 continue
 
+            if cmd_root in ["/clear", "/cleat"]: # Handle typo from user request
+                messages = []
+                conversation_id = db.create_conversation(model_name)
+                print(colored("\n🧹 Conversation cleared. Started new session.", Colors.GREEN))
+                continue
+
+            if cmd_root == "/undo":
+                if len(messages) >= 2: # Need at least user + assistant
+                    # Remove last two from memory
+                    if messages[-1]['role'] == 'assistant':
+                        messages.pop()
+                    if messages and messages[-1]['role'] == 'user':
+                        messages.pop()
+                    
+                    # Remove from DB
+                    if db.undo_last_turn(conversation_id):
+                        print(colored("↩️  Undid last turn.", Colors.GREEN))
+                    else:
+                        print(colored("⚠️  Could not undo in database (maybe sync issue).", Colors.YELLOW))
+                else:
+                    print(colored("⚠️  Nothing to undo.", Colors.YELLOW))
+                continue
+
+            if cmd_root == "/save":
+                filename = cmd_arg.strip()
+                if not filename:
+                    filename = f"chat_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.md"
+                
+                try:
+                    with open(filename, 'w', encoding='utf-8') as f:
+                        for msg in messages:
+                            role = msg['role'].upper()
+                            content = msg.get('content', '')
+                            f.write(f"**{role}**:\n{content}\n\n---\n\n")
+                    print(colored(f"💾 Saved conversation to {filename}", Colors.GREEN))
+                except Exception as e:
+                    print_error(f"Failed to save: {e}")
+                continue
+
+            if cmd_root == "/run":
+                if not cmd_arg:
+                    print_warning("Usage: /run <command>")
+                    continue
+                print(colored(f"💻 Executing: {cmd_arg}", Colors.CYAN))
+                result = tools.run_shell_command(cmd_arg)
+                print(result)
+                continue
+
+            if cmd_root == "/explain":
+                prompt_text = prompts_manager.get_prompt("explain")
+                if prompt_text:
+                    print(colored("🔍 Asking for explanation...", Colors.CYAN))
+                    # Treat as user input
+                    user_input = prompt_text
+                    # Proceed to normal processing
+                else:
+                    print_error("Explanation prompt not found.")
+                    continue
+
+            if cmd_root == "/role":
+                if not cmd_arg:
+                    print_warning("Usage: /role <name>")
+                    print_info(f"Available roles: {', '.join(prompts_manager.list_prompts())}")
+                    continue
+                
+                role_prompt = prompts_manager.get_prompt(cmd_arg)
+                if role_prompt:
+                    print(colored(f"🎭 Applied role: {cmd_arg}", Colors.GREEN))
+                    # Add as system message or instruction
+                    messages.append({'role': 'system', 'content': role_prompt})
+                    # db.add_message(conversation_id, 'system', role_prompt) # Schema might not support 'system' yet, skipping DB for now or map to user
+                    continue
+                else:
+                    print_error(f"Role '{cmd_arg}' not found.")
+                    continue
+
+            if cmd_root == "/model":
+                if not cmd_arg:
+                    print_warning(f"Current model: {model_name}")
+                    continue
+                model_name = cmd_arg
+                db.set_active_model(model_name)
+                print(colored(f"🤖 Switched to model: {model_name}", Colors.GREEN))
+                continue
+
+            if cmd_root == "/search":
+                if not cmd_arg:
+                    print_warning("Usage: /search <query>")
+                    continue
+                print(colored(f"🌐 Searching web for: {cmd_arg}", Colors.CYAN))
+                # Instruct the AI to use its tool capabilities (fetch_url, etc)
+                # We format this as a user message to drive the agent
+                user_input = f"Search the web for '{cmd_arg}' and provide a summary of the findings."
+                # Proceed to normal processing which will treat this as the user prompt
+
+            
+            # TODO: Add /temp implementation if we want to pass options to ollama.chat
+
             print(colored(f"🤖 [{model_name}] Thinking...", Colors.CYAN))
 
-            # Only add to messages if it's not a special command
+            # Only add to messages if it's not a special command (already handled above if continued)
             messages.append({"role": "user", "content": user_input})
             db.add_message(conversation_id, "user", user_input)
 

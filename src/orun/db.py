@@ -301,3 +301,39 @@ def get_conversation(conversation_id: int) -> dict | None:
         "created_at": conv.created_at.isoformat(),
         "updated_at": conv.updated_at.isoformat(),
     }
+
+def undo_last_turn(conversation_id: int) -> bool:
+    """Removes the last turn (User + Assistant) from the conversation."""
+    with db.atomic():
+        # Get last message
+        last_msg = (Message
+                   .select()
+                   .where(Message.conversation_id == conversation_id)
+                   .order_by(Message.id.desc())
+                   .first())
+        
+        if not last_msg:
+            return False
+
+        # If it's assistant, try to find the preceding user message
+        if last_msg.role == 'assistant':
+            user_msg = (Message
+                        .select()
+                        .where(
+                            (Message.conversation_id == conversation_id) & 
+                            (Message.id < last_msg.id)
+                        )
+                        .order_by(Message.id.desc())
+                        .first())
+            
+            last_msg.delete_instance()
+            if user_msg and user_msg.role == 'user':
+                user_msg.delete_instance()
+            return True
+            
+        elif last_msg.role == 'user':
+            # Just delete the user message (orphan or mid-turn)
+            last_msg.delete_instance()
+            return True
+
+    return False
