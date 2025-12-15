@@ -49,9 +49,8 @@ src/orun/
 ```
 
 Key components in `main.py`:
-- **MODELS dict**: Model aliases mapping (e.g., "coder" -> "qwen3-coder:30b")
 - **SCREENSHOT_DIRS**: Default paths for screenshot discovery
-- **Subcommands**: models, history, c, last
+- **Subcommands**: models, refresh, shortcut, set-active, history, c, last
 
 Database stored at `~/.orun/history.db` (SQLite).
 
@@ -65,14 +64,17 @@ Database stored at `~/.orun/history.db` (SQLite).
 
 ```bash
 # Query
-orun "prompt"              # Basic query with default model
-orun "prompt" -m coder     # Use model alias
+orun "prompt"              # Basic query with active model
+orun "prompt" -m coder     # Use model alias (and set as active)
 orun "prompt" -i           # Attach most recent screenshot
 orun "prompt" -i 3x        # Attach last 3 screenshots
 orun --chat                # Interactive chat mode
 
 # Subcommands
 orun models                # List available model aliases
+orun refresh               # Sync models from Ollama
+orun set-active <model>    # Set active model
+orun shortcut <m> <s>      # Change model shortcut
 orun history               # List recent conversations
 orun c <id>                # Continue conversation by ID
 orun last                  # Continue last conversation

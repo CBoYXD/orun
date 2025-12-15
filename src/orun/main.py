@@ -10,17 +10,7 @@ from orun import db
 if sys.platform == "win32":
     sys.stdout.reconfigure(encoding='utf-8', errors='replace')
 
-# --- CONFIGURATION ---
-MODELS = {
-    "s":          "llama3.1:8b",
-    "search":     "qwen3:8b",
-    "qwenvl":     "qwen3-vl:30b",
-    "qwen":       "qwen3:30b",
-    "coder":      "qwen3-coder:30b",
-    "fast_coder": "qwen2.5-coder:14b",
-    "gpt":        "gpt-oss:20b"
-}
-DEFAULT_MODEL = "llama3.1:8b"
+
 
 SCREENSHOT_DIRS = [
     Path.home() / "Pictures" / "Screenshots",
@@ -61,12 +51,23 @@ def handle_ollama_stream(stream):
 
 def cmd_models():
     """Prints all available models and their aliases."""
+    models = db.get_models()
+    active_model = db.get_active_model()
+    
     print("\n\033[93mAvailable Models:\033[0m")
-    max_alias_len = max(len(alias) for alias in MODELS.keys())
+    if not models:
+        print("  No models found.")
+        return
 
-    for alias, model_name in MODELS.items():
-        is_default = " (default)" if model_name == DEFAULT_MODEL else ""
-        print(f"  \033[92m{alias:<{max_alias_len}}\033[0m : \033[94m{model_name}{is_default}\033[0m")
+    max_alias_len = max(len(alias) for alias in models.keys())
+
+    for alias, model_name in models.items():
+        marker = ""
+        if model_name == active_model:
+            marker = " \033[95m(active)\033[0m"
+
+            
+        print(f"  \033[92m{alias:<{max_alias_len}}\033[0m : \033[94m{model_name}{marker}\033[0m")
 
     print("\n\033[93mUse -m <alias> to select a model.\033[0m")
 
@@ -229,12 +230,48 @@ def get_image_paths(image_args):
     return image_paths
 
 def main():
+    # Initialize DB
+    db.initialize()
+    
+
+    models = db.get_models()
+
     # Check for subcommands first
     if len(sys.argv) > 1:
         cmd = sys.argv[1]
 
         if cmd == "models":
             cmd_models()
+            return
+
+        if cmd == "refresh":
+            print("\033[96m🔄 Syncing models from Ollama...\033[0m")
+            db.refresh_ollama_models()
+            return
+
+        if cmd == "shortcut":
+            if len(sys.argv) < 4:
+                print("\033[91m⚠️ Usage: orun shortcut <model_name_or_shortcut> <new_shortcut>\033[0m")
+                return
+            identifier = sys.argv[2]
+            new_shortcut = sys.argv[3]
+            if db.update_model_shortcut(identifier, new_shortcut):
+                print(f"\033[92m✅ Shortcut updated: {new_shortcut} -> {identifier} (or resolved full name)\033[0m")
+            else:
+                print(f"\033[91m❌ Could not update shortcut. Model '{identifier}' not found or shortcut '{new_shortcut}' already taken.\033[0m")
+            return
+
+        if cmd == "set-active":
+            if len(sys.argv) < 3:
+                print("\033[91m⚠️ Usage: orun set-active <model_name_or_shortcut>\033[0m")
+                return
+            target = sys.argv[2]
+            db.set_active_model(target)
+            active = db.get_active_model()
+            if active:
+                 print(f"\033[92m✅ Active model set to: {active}\033[0m")
+            else:
+                 print(f"\033[91m❌ Could not set active model. '{target}' not found.\033[0m")
             return
 
         if cmd == "history":
@@ -252,7 +289,19 @@ def main():
             parser.add_argument("-i", "--images", nargs="*", type=str, help="Screenshot indices")
             args = parser.parse_args(sys.argv[2:])
             image_paths = get_image_paths(args.images)
-            model_override = MODELS.get(args.model, args.model) if args.model else None
+            
+            # Resolve model
+            model_override = models.get(args.model, args.model) if args.model else None
+            
+            # We need to peek at the conversation to know the model if not overridden
+            if not model_override:
+                conv = db.get_conversation(args.id)
+                if conv:
+                     model_override = conv["model"]
+            
+            if model_override:
+                db.set_active_model(model_override)
+
             cmd_continue(args.id, " ".join(args.prompt) if args.prompt else None, image_paths, model_override)
             return
 
@@ -263,14 +312,27 @@ def main():
             parser.add_argument("-i", "--images", nargs="*", type=str, help="Screenshot indices")
             args = parser.parse_args(sys.argv[2:])
             image_paths = get_image_paths(args.images)
-            model_override = MODELS.get(args.model, args.model) if args.model else None
+            
+            # Resolve model
+            model_override = models.get(args.model, args.model) if args.model else None
+            
+            if not model_override:
+                 cid = db.get_last_conversation_id()
+                 if cid:
+                     conv = db.get_conversation(cid)
+                     if conv:
+                         model_override = conv["model"]
+            
+            if model_override:
+                db.set_active_model(model_override)
+
             cmd_last(" ".join(args.prompt) if args.prompt else None, image_paths, model_override)
             return
 
     # Default query mode
     parser = argparse.ArgumentParser(
         description="AI CLI wrapper for Ollama",
-        usage="orun [command] [prompt] [options]\n\nCommands:\n  models   List available models\n  history  List recent conversations\n  c <id>   Continue conversation by ID\n  last     Continue last conversation"
+        usage="orun [command] [prompt] [options]\n\nCommands:\n  models      List available models\n  refresh     Sync models from Ollama\n  shortcut    Change model shortcut\n  set-active  Set active model\n  history     List recent conversations\n  c <id>      Continue conversation by ID\n  last        Continue last conversation"
     )
     parser.add_argument("prompt", nargs="*", help="Text prompt")
     parser.add_argument("-m", "--model", default="default", help="Model alias or name")
@@ -279,8 +341,21 @@ def main():
 
     args = parser.parse_args()
 
-    target_model_key = args.model if args.model != "default" else DEFAULT_MODEL
-    model_name = MODELS.get(target_model_key, target_model_key)
+    # Resolve Model
+    model_name = None
+    if args.model != "default":
+        # User explicitly asked for a model
+        model_name = models.get(args.model, args.model)
+        # Update active model
+        db.set_active_model(model_name)
+    else:
+        # User didn't specify, use active
+        model_name = db.get_active_model()
+
+    if not model_name:
+        print("\033[91m❌ No active model set.\033[0m")
+        print("Please specify a model with \033[93m-m <model>\033[0m or set a default with \033[93morun set-active <model>\033[0m")
+        return
 
     user_prompt = " ".join(args.prompt) if args.prompt else ""
     image_paths = get_image_paths(args.images)
