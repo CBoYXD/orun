@@ -4,6 +4,12 @@ import ollama
 import sys
 from pathlib import Path
 
+from orun import db
+
+# Fix Windows console encoding for emojis
+if sys.platform == "win32":
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+
 # --- CONFIGURATION ---
 MODELS = {
     "s":          "llama3.1:8b",
@@ -27,12 +33,10 @@ def get_screenshot_path(index):
         print("\033[91m⚠️ Screenshot folder not found!\033[0m")
         return None
 
-    # Gather files matching extensions
     files = []
     for ext in ["*.png", "*.jpg", "*.jpeg"]:
         files.extend(target_dir.glob(ext))
-    
-    # Sort by modification time, newest first
+
     files = sorted(files, key=lambda p: p.stat().st_mtime, reverse=True)
 
     if index > len(files):
@@ -52,29 +56,56 @@ def handle_ollama_stream(stream):
     except Exception as e:
         print(f"\n\033[91m❌ Stream Error: {e}\033[0m")
     finally:
-        print() # Ensure a new line after the stream
+        print()
     return full_response
 
-def list_models(models_dict, default_model):
-    """Prints all available models and their aliases in a formatted way."""
+def cmd_models():
+    """Prints all available models and their aliases."""
     print("\n\033[93mAvailable Models:\033[0m")
-    max_alias_len = max(len(alias) for alias in models_dict.keys())
-    
-    for alias, model_name in models_dict.items():
-        is_default = " (default)" if model_name == default_model else ""
+    max_alias_len = max(len(alias) for alias in MODELS.keys())
+
+    for alias, model_name in MODELS.items():
+        is_default = " (default)" if model_name == DEFAULT_MODEL else ""
         print(f"  \033[92m{alias:<{max_alias_len}}\033[0m : \033[94m{model_name}{is_default}\033[0m")
-    
-    print("\n\033[93mYou can use aliases with -m (e.g., -m coder).\033[0m")
-    print(f"\033[93mIf -m is not specified, '{default_model}' is used.\033[0m")
+
+    print("\n\033[93mUse -m <alias> to select a model.\033[0m")
+
+def cmd_history(limit: int = 10):
+    """Prints recent conversations."""
+    conversations = db.get_recent_conversations(limit)
+    if not conversations:
+        print("\033[93mNo conversations found.\033[0m")
+        return
+
+    print("\n\033[93mRecent Conversations:\033[0m")
+    for conv in conversations:
+        messages = db.get_conversation_messages(conv["id"])
+        first_msg = messages[0]["content"][:50] + "..." if messages and len(messages[0]["content"]) > 50 else (messages[0]["content"] if messages else "Empty")
+        print(f"  \033[92m{conv['id']:>3}\033[0m | \033[94m{conv['model']:<20}\033[0m | {first_msg}")
+
+    print("\n\033[93mUse 'orun c <id>' to continue a conversation.\033[0m")
+
+def cmd_continue(conversation_id: int, prompt: str = None, image_paths: list = None, model_override: str = None):
+    """Continue an existing conversation."""
+    conv = db.get_conversation(conversation_id)
+    if not conv:
+        print(f"\033[91m❌ Conversation #{conversation_id} not found.\033[0m")
+        return
+
+    model_name = model_override if model_override else conv["model"]
+    run_chat_mode(model_name, prompt or "", image_paths or [], conversation_id)
+
+def cmd_last(prompt: str = None, image_paths: list = None, model_override: str = None):
+    """Continue the last conversation."""
+    conversation_id = db.get_last_conversation_id()
+    if not conversation_id:
+        print("\033[91m❌ No conversations found.\033[0m")
+        return
+
+    cmd_continue(conversation_id, prompt, image_paths, model_override)
 
 def parse_image_indices(image_args):
-    """
-    Parses flexible image arguments.
-    '3x' -> [1, 2, 3]
-    '1,2,3' -> [1, 2, 3]
-    '1 2 3' -> [1, 2, 3]
-    Returns a list of unique, sorted integer indices.
-    """
+    """Parses flexible image arguments."""
     indices = set()
     if not image_args:
         return []
@@ -98,44 +129,58 @@ def parse_image_indices(image_args):
             try:
                 indices.add(int(arg))
             except ValueError:
-                 print(f"\033[91m⚠️ Invalid index: '{arg}'\033[0m")
+                print(f"\033[91m⚠️ Invalid index: '{arg}'\033[0m")
 
     return sorted(list(indices))
 
 def run_single_shot(model_name, user_prompt, image_paths):
     """Handles a single query to the model."""
     print(f"\033[96m🤖 [{model_name}] Thinking...\033[0m")
+
+    conversation_id = db.create_conversation(model_name)
+    db.add_message(conversation_id, "user", user_prompt, image_paths or None)
+
     try:
         stream = ollama.chat(
             model=model_name,
             messages=[{'role': 'user', 'content': user_prompt, 'images': image_paths or None}],
             stream=True,
         )
-        handle_ollama_stream(stream)
+        response = handle_ollama_stream(stream)
+        if response:
+            db.add_message(conversation_id, "assistant", response)
     except Exception as e:
         print(f"\n\033[91m❌ Error: {e}\033[0m")
 
-def run_chat_mode(model_name, initial_prompt, initial_images):
+def run_chat_mode(model_name, initial_prompt, initial_images, conversation_id=None):
     """Runs an interactive chat session."""
     print(f"\033[92mEntering chat mode with '{model_name}'.\033[0m")
     print("Type 'quit' or 'exit' to end the session.")
-    messages = []
+
+    if conversation_id:
+        messages = db.get_conversation_messages(conversation_id)
+        print(f"\033[90mLoaded {len(messages)} messages from conversation #{conversation_id}\033[0m")
+    else:
+        messages = []
+        conversation_id = db.create_conversation(model_name)
 
     if initial_prompt or initial_images:
         if not initial_prompt:
             initial_prompt = "Describe this image."
-        
+
         print(f"\033[96m🤖 [{model_name}] Thinking...\033[0m")
         print("\033[94mAssistant: \033[0m", end="")
-        
+
         user_message = {'role': 'user', 'content': initial_prompt, 'images': initial_images or None}
         messages.append(user_message)
-        
+        db.add_message(conversation_id, "user", initial_prompt, initial_images or None)
+
         try:
             stream = ollama.chat(model=model_name, messages=messages, stream=True)
             assistant_response = handle_ollama_stream(stream)
             if assistant_response:
                 messages.append({'role': 'assistant', 'content': assistant_response})
+                db.add_message(conversation_id, "assistant", assistant_response)
         except Exception as e:
             print(f"\n\033[91m❌ Error: {e}\033[0m")
             messages.pop()
@@ -145,16 +190,18 @@ def run_chat_mode(model_name, initial_prompt, initial_images):
             user_input = input("\n\033[92mYou: \033[0m")
             if user_input.lower() in ['quit', 'exit']:
                 break
-            
+
             print(f"\033[96m🤖 [{model_name}] Thinking...\033[0m")
             print("\033[94mAssistant: \033[0m", end="")
 
             messages.append({'role': 'user', 'content': user_input})
-            
+            db.add_message(conversation_id, "user", user_input)
+
             stream = ollama.chat(model=model_name, messages=messages, stream=True)
             assistant_response = handle_ollama_stream(stream)
             if assistant_response:
                 messages.append({'role': 'assistant', 'content': assistant_response})
+                db.add_message(conversation_id, "assistant", assistant_response)
             else:
                 messages.pop()
 
@@ -165,37 +212,78 @@ def run_chat_mode(model_name, initial_prompt, initial_images):
             if messages and messages[-1]['role'] == 'user':
                 messages.pop()
 
-def main():
-    parser = argparse.ArgumentParser(description="AI CLI wrapper")
-    parser.add_argument("prompt", nargs="*", help="Text prompt")
-    parser.add_argument("-m", "--model", default="default", help="Model alias or name")
-    parser.add_argument("-i", "--images", nargs="*", type=str, help="Screenshot indices. Examples: '1 2', '1,2,3', '3x' (last 3). Default: 1.")
-    parser.add_argument("--chat", action="store_true", help="Enable continuous chat mode")
-    parser.add_argument("--list-models", action="store_true", help="List all available models and their aliases.")
-    
-    args = parser.parse_args()
-
-    if args.list_models:
-        list_models(MODELS, DEFAULT_MODEL)
-        return
-
-    target_model_key = args.model if args.model != "default" else DEFAULT_MODEL
-    model_name = MODELS.get(target_model_key, target_model_key)
-
-    user_prompt = " ".join(args.prompt)
+def get_image_paths(image_args):
+    """Parse image arguments and return list of paths."""
     image_paths = []
-    
-    if args.images is not None:
-        if not args.images: # Handles '-i' with no arguments
+    if image_args is not None:
+        if not image_args:
             indices = [1]
         else:
-            indices = parse_image_indices(args.images)
-        
+            indices = parse_image_indices(image_args)
+
         for idx in indices:
             path = get_screenshot_path(idx)
             if path:
                 image_paths.append(path)
                 print(f"\033[90m🖼️  Added: {os.path.basename(path)}\033[0m")
+    return image_paths
+
+def main():
+    # Check for subcommands first
+    if len(sys.argv) > 1:
+        cmd = sys.argv[1]
+
+        if cmd == "models":
+            cmd_models()
+            return
+
+        if cmd == "history":
+            parser = argparse.ArgumentParser(prog="orun history")
+            parser.add_argument("-n", type=int, default=10, help="Number of conversations to show")
+            args = parser.parse_args(sys.argv[2:])
+            cmd_history(args.n)
+            return
+
+        if cmd == "c":
+            parser = argparse.ArgumentParser(prog="orun c")
+            parser.add_argument("id", type=int, help="Conversation ID")
+            parser.add_argument("prompt", nargs="*", help="Initial prompt")
+            parser.add_argument("-m", "--model", help="Override model")
+            parser.add_argument("-i", "--images", nargs="*", type=str, help="Screenshot indices")
+            args = parser.parse_args(sys.argv[2:])
+            image_paths = get_image_paths(args.images)
+            model_override = MODELS.get(args.model, args.model) if args.model else None
+            cmd_continue(args.id, " ".join(args.prompt) if args.prompt else None, image_paths, model_override)
+            return
+
+        if cmd == "last":
+            parser = argparse.ArgumentParser(prog="orun last")
+            parser.add_argument("prompt", nargs="*", help="Initial prompt")
+            parser.add_argument("-m", "--model", help="Override model")
+            parser.add_argument("-i", "--images", nargs="*", type=str, help="Screenshot indices")
+            args = parser.parse_args(sys.argv[2:])
+            image_paths = get_image_paths(args.images)
+            model_override = MODELS.get(args.model, args.model) if args.model else None
+            cmd_last(" ".join(args.prompt) if args.prompt else None, image_paths, model_override)
+            return
+
+    # Default query mode
+    parser = argparse.ArgumentParser(
+        description="AI CLI wrapper for Ollama",
+        usage="orun [command] [prompt] [options]\n\nCommands:\n  models   List available models\n  history  List recent conversations\n  c <id>   Continue conversation by ID\n  last     Continue last conversation"
+    )
+    parser.add_argument("prompt", nargs="*", help="Text prompt")
+    parser.add_argument("-m", "--model", default="default", help="Model alias or name")
+    parser.add_argument("-i", "--images", nargs="*", type=str, help="Screenshot indices")
+    parser.add_argument("--chat", action="store_true", help="Enable chat mode")
+
+    args = parser.parse_args()
+
+    target_model_key = args.model if args.model != "default" else DEFAULT_MODEL
+    model_name = MODELS.get(target_model_key, target_model_key)
+
+    user_prompt = " ".join(args.prompt) if args.prompt else ""
+    image_paths = get_image_paths(args.images)
 
     if not args.chat and not user_prompt and not image_paths:
         parser.print_help()

@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-orun-py is a Python CLI wrapper for interacting with local LLMs via Ollama, featuring built-in screenshot analysis support.
+orun-py is a Python CLI wrapper for interacting with local LLMs via Ollama, featuring built-in screenshot analysis and conversation history.
 
 ## Build and Development Commands
 
@@ -23,9 +23,6 @@ uv publish
 
 # Run the CLI directly
 uv run orun "your prompt"
-
-# Run with Python module
-python -m orun.main "your prompt"
 ```
 
 ## Versioning and Release Workflow
@@ -47,27 +44,36 @@ When making changes to the package:
 ```
 src/orun/
 ├── __init__.py    # Package init (empty)
-└── main.py        # All CLI logic - entry point, argument parsing, Ollama integration
+├── main.py        # CLI logic - entry point, argument parsing, Ollama integration
+└── db.py          # Database module (Peewee ORM) for conversation history
 ```
 
-The entire application lives in `main.py` with no separate modules. Key components:
+Key components in `main.py`:
 - **MODELS dict**: Model aliases mapping (e.g., "coder" -> "qwen3-coder:30b")
 - **SCREENSHOT_DIRS**: Default paths for screenshot discovery
-- **main()**: Entry point registered as `orun` command via pyproject.toml
+- **Subcommands**: models, history, c, last
+
+Database stored at `~/.orun/history.db` (SQLite).
 
 ## Key Dependencies
 
 - **ollama**: Python client for Ollama API (local LLM server)
+- **peewee**: ORM for SQLite conversation history
 - **hatchling**: Build backend for package distribution
 
-## CLI Usage Patterns
+## CLI Commands
 
 ```bash
+# Query
 orun "prompt"              # Basic query with default model
 orun "prompt" -m coder     # Use model alias
 orun "prompt" -i           # Attach most recent screenshot
 orun "prompt" -i 3x        # Attach last 3 screenshots
-orun "prompt" -i 1 3       # Attach screenshots by index
 orun --chat                # Interactive chat mode
-orun --list-models         # Show available model aliases
+
+# Subcommands
+orun models                # List available model aliases
+orun history               # List recent conversations
+orun c <id>                # Continue conversation by ID
+orun last                  # Continue last conversation
 ```

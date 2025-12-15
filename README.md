@@ -1,12 +1,13 @@
 # orun-py
 
-A Python CLI wrapper for interacting with local LLMs via Ollama, featuring built-in support for analyzing screenshots.
+A Python CLI wrapper for interacting with local LLMs via Ollama, featuring built-in support for analyzing screenshots and conversation history.
 
 ## Features
 
 - **Quick AI Queries:** Send prompts to your local LLMs directly from the terminal.
 - **Screenshot Analysis:** Automatically detect and attach the most recent screenshots from your user Pictures folder to your query.
 - **Chat Mode:** Maintain a continuous conversation session.
+- **Conversation History:** All conversations are saved locally and can be continued later.
 - **Model Management:** Easily switch between different configured Ollama models using aliases.
 
 ## Installation
@@ -16,8 +17,6 @@ pip install orun-py
 ```
 
 ## Usage
-
-The main command is `orun`.
 
 ### Basic Query
 ```bash
@@ -49,13 +48,27 @@ orun "Help me debug this" -i --chat
 ```
 
 ### Select Model
-Use a specific model alias (configured in `orun/main.py`):
+Use a specific model alias:
 ```bash
 orun "Write python code" -m coder
 ```
 List available models:
 ```bash
-orun --list-models
+orun models
+```
+
+### Conversation History
+List recent conversations:
+```bash
+orun history
+```
+Continue a conversation by ID:
+```bash
+orun c 1
+```
+Continue the last conversation:
+```bash
+orun last
 ```
 
 ## Requirements
