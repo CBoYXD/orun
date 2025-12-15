@@ -46,13 +46,35 @@ def main():
             commands.cmd_history(args.n)
             return
 
+        if cmd == "chat":
+            parser = argparse.ArgumentParser(prog="orun chat")
+            parser.add_argument("prompt", nargs="*", help="Initial prompt")
+            parser.add_argument("-m", "--model", help="Override model")
+            parser.add_argument("-i", "--images", nargs="*", type=str, help="Screenshot indices")
+            args = parser.parse_args(sys.argv[2:])
+            
+            image_paths = utils.get_image_paths(args.images)
+            
+            # Resolve model
+            model_name = models.get(args.model, args.model) if args.model else db.get_active_model()
+            
+            if not model_name:
+                print_error("No active model set.")
+                print(f"Please specify a model with {colored('-m <model>', Colors.YELLOW)} or set a default with {colored('orun set-active <model>', Colors.YELLOW)}")
+                return
+                
+            if args.model:
+                db.set_active_model(model_name)
+
+            core.run_chat_mode(model_name, " ".join(args.prompt) if args.prompt else None, image_paths, use_tools=True)
+            return
+
         if cmd == "c":
             parser = argparse.ArgumentParser(prog="orun c")
             parser.add_argument("id", type=int, help="Conversation ID")
             parser.add_argument("prompt", nargs="*", help="Initial prompt")
             parser.add_argument("-m", "--model", help="Override model")
             parser.add_argument("-i", "--images", nargs="*", type=str, help="Screenshot indices")
-            parser.add_argument("--agent", action="store_true", help="Enable Agent mode")
             args = parser.parse_args(sys.argv[2:])
             
             image_paths = utils.get_image_paths(args.images)
@@ -67,7 +89,8 @@ def main():
             if model_override:
                 db.set_active_model(model_override)
 
-            commands.cmd_continue(args.id, " ".join(args.prompt) if args.prompt else None, image_paths, model_override, use_tools=args.agent)
+            # Always enable tools
+            commands.cmd_continue(args.id, " ".join(args.prompt) if args.prompt else None, image_paths, model_override, use_tools=True)
             return
 
         if cmd == "last":
@@ -75,7 +98,6 @@ def main():
             parser.add_argument("prompt", nargs="*", help="Initial prompt")
             parser.add_argument("-m", "--model", help="Override model")
             parser.add_argument("-i", "--images", nargs="*", type=str, help="Screenshot indices")
-            parser.add_argument("--agent", action="store_true", help="Enable Agent mode")
             args = parser.parse_args(sys.argv[2:])
             
             image_paths = utils.get_image_paths(args.images)
@@ -92,19 +114,18 @@ def main():
             if model_override:
                 db.set_active_model(model_override)
 
-            commands.cmd_last(" ".join(args.prompt) if args.prompt else None, image_paths, model_override, use_tools=args.agent)
+            # Always enable tools
+            commands.cmd_last(" ".join(args.prompt) if args.prompt else None, image_paths, model_override, use_tools=True)
             return
 
-    # Default Query Mode
+    # Default Query Mode (Single Shot)
     parser = argparse.ArgumentParser(
         description="AI CLI wrapper for Ollama",
-        usage="orun [command] [prompt] [options]\n\nCommands:\n  models      List available models\n  refresh     Sync models from Ollama\n  shortcut    Change model shortcut\n  set-active  Set active model\n  history     List recent conversations\n  c <id>      Continue conversation by ID\n  last        Continue last conversation"
+        usage="orun [command] [prompt] [options]\n\nCommands:\n  chat        Start interactive chat session\n  models      List available models\n  refresh     Sync models from Ollama\n  shortcut    Change model shortcut\n  set-active  Set active model\n  history     List recent conversations\n  c <id>      Continue conversation by ID\n  last        Continue last conversation"
     )
     parser.add_argument("prompt", nargs="*", help="Text prompt")
     parser.add_argument("-m", "--model", default="default", help="Model alias or name")
     parser.add_argument("-i", "--images", nargs="*", type=str, help="Screenshot indices")
-    parser.add_argument("--chat", action="store_true", help="Enable chat mode")
-    parser.add_argument("--agent", action="store_true", help="Enable Agent mode (allow AI to run commands/edit files)")
 
     args = parser.parse_args()
 
@@ -127,16 +148,13 @@ def main():
     user_prompt = " ".join(args.prompt) if args.prompt else ""
     image_paths = utils.get_image_paths(args.images)
 
-    if not args.chat and not user_prompt and not image_paths:
+    # If no prompt/images provided, show help
+    if not user_prompt and not image_paths:
         parser.print_help()
         return
 
-    if args.chat:
-        core.run_chat_mode(model_name, user_prompt, image_paths, use_tools=args.agent)
-    else:
-        if not user_prompt and image_paths:
-            user_prompt = "Describe this image."
-        core.run_single_shot(model_name, user_prompt, image_paths, use_tools=args.agent)
+    # Always enable tools for single shot too
+    core.run_single_shot(model_name, user_prompt, image_paths, use_tools=True)
 
 if __name__ == "__main__":
     try:

@@ -1,10 +1,13 @@
-# CLAUDE.md
+# ORUN.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to AI assistants when working with code in this repository.
 
 ## Project Overview
 
-orun-py is a Python CLI wrapper for interacting with local LLMs via Ollama, featuring built-in screenshot analysis and conversation history.
+orun-py is a Python CLI wrapper for interacting with local LLMs via Ollama. It features:
+- **Agent Capabilities**: Can read/write files, run shell commands, search files, and fetch URLs (with user confirmation).
+- **Multimedia**: Built-in screenshot discovery and attachment.
+- **History**: SQLite-based conversation tracking.
 
 ## Build and Development Commands
 
@@ -27,53 +30,52 @@ uv run orun "your prompt"
 
 ## Versioning and Release Workflow
 
-When making changes to the package:
-
-1. **Test functionality** by running `orun` command to verify changes work correctly
-2. **Update version** in `pyproject.toml` - increment by `0.0.1` (e.g., `1.0.1` -> `1.0.2`)
-   - When version reaches `X.Y.9`, next version becomes `X.(Y+1).0` (e.g., `1.0.9` -> `1.1.0`)
+1. **Test functionality** by running `orun` command.
+2. **Update version** in `pyproject.toml`.
 3. **Build**: `uv build`
 4. **Publish**: `uv publish`
-5. **Commit** with message format:
-   ```
-   Update to {version}. Changes: {description of changes}
-   ```
 
 ## Project Structure
 
 ```
 src/orun/
-├── __init__.py    # Package init (empty)
-├── main.py        # CLI logic - entry point, argument parsing, Ollama integration
-└── db.py          # Database module (Peewee ORM) for conversation history
+├── main.py        # Entry point and argument parsing
+├── core.py        # AI logic (chat loops, Ollama interaction)
+├── commands.py    # CLI command handlers
+├── tools.py       # Agent tools (read_file, run_shell_command, etc.)
+├── utils.py       # Helpers (colors, config, screenshot finding)
+└── db.py          # Database module (Peewee ORM)
 ```
-
-Key components in `main.py`:
-- **MODELS dict**: Model aliases mapping (e.g., "coder" -> "qwen3-coder:30b")
-- **SCREENSHOT_DIRS**: Default paths for screenshot discovery
-- **Subcommands**: models, history, c, last
-
-Database stored at `~/.orun/history.db` (SQLite).
-
-## Key Dependencies
-
-- **ollama**: Python client for Ollama API (local LLM server)
-- **peewee**: ORM for SQLite conversation history
-- **hatchling**: Build backend for package distribution
 
 ## CLI Commands
 
 ```bash
-# Query
-orun "prompt"              # Basic query with default model
-orun "prompt" -m coder     # Use model alias
+# Query (Single-shot Agent)
+orun "prompt"              # Execute prompt with active model
+orun "prompt" -m coder     # Use specific model
 orun "prompt" -i           # Attach most recent screenshot
 orun "prompt" -i 3x        # Attach last 3 screenshots
-orun --chat                # Interactive chat mode
 
-# Subcommands
-orun models                # List available model aliases
+# Interactive Chat (Agent Mode)
+orun chat                  # Start interactive session
+orun chat -m coder         # Chat with specific model
+
+# Management
+orun models                # List available models
+orun refresh               # Sync models from Ollama
+orun set-active <model>    # Set default active model
+orun shortcut <m> <s>      # Create shortcut for model
 orun history               # List recent conversations
+
+# Context
 orun c <id>                # Continue conversation by ID
 orun last                  # Continue last conversation
 ```
+
+## Agent Tools
+Tools are enabled by default for all chat/query modes. The AI can:
+- `read_file`, `write_file`
+- `list_directory`, `search_files`
+- `run_shell_command`
+- `fetch_url`
+User confirmation is required for execution.

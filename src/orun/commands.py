@@ -1,5 +1,4 @@
-import sys
-from orun import db, core, utils
+from orun import db, core
 from orun.utils import Colors, colored, print_error, print_success, print_info, print_warning
 
 def cmd_models():

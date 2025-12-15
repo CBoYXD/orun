@@ -1,14 +1,13 @@
 # orun-py
 
-A Python CLI wrapper for interacting with local LLMs via Ollama, featuring built-in support for analyzing screenshots and conversation history.
+A Python CLI Agent wrapper for Ollama. It combines chat capabilities with autonomous tools (file I/O, shell execution, web fetching) and built-in screenshot analysis.
 
 ## Features
 
-- **Quick AI Queries:** Send prompts to your local LLMs directly from the terminal.
-- **Screenshot Analysis:** Automatically detect and attach the most recent screenshots from your user Pictures folder to your query.
-- **Chat Mode:** Maintain a continuous conversation session.
-- **Conversation History:** All conversations are saved locally and can be continued later.
-- **Model Management:** Easily switch between different configured Ollama models using aliases.
+- **Autonomous Agent:** Can read/write files, run shell commands, and fetch URLs (with user confirmation).
+- **Screenshot Analysis:** Auto-detects and attaches recent screenshots from your Pictures folder.
+- **Conversation History:** SQLite-backed history lets you resume any session.
+- **Model Management:** Sync models from Ollama and manage shortcuts.
 
 ## Installation
 
@@ -18,43 +17,50 @@ pip install orun-py
 
 ## Usage
 
-### Basic Query
+### Agent & Query
+Ask a question or give a task. The AI will use tools if necessary.
 ```bash
 orun "Why is the sky blue?"
+orun "Scan the current directory and list all Python files"
+orun "Read src/main.py and explain how it works"
+```
+
+### Interactive Chat
+Start a continuous session:
+```bash
+orun chat
+```
+Start chat with a specific model:
+```bash
+orun chat -m coder
 ```
 
 ### Analyze Screenshots
-By default, the `-i` flag grabs the most recent screenshot.
+Attach the most recent screenshot:
 ```bash
 orun "What is this error?" -i
 ```
-Analyze the last 3 screenshots:
+Attach the last 3 screenshots:
 ```bash
 orun "Compare these images" -i 3x
 ```
-Select specific screenshots by index (1 is the newest):
-```bash
-orun "Look at the first and third image" -i 1 3
-```
 
-### Chat Mode
-Start an interactive session:
+### Model Management
+Sync models from Ollama:
 ```bash
-orun --chat
-```
-Start chat with an initial prompt and image:
-```bash
-orun "Help me debug this" -i --chat
-```
-
-### Select Model
-Use a specific model alias:
-```bash
-orun "Write python code" -m coder
+orun refresh
 ```
 List available models:
 ```bash
 orun models
+```
+Set default active model:
+```bash
+orun set-active llama3.1
+```
+Create a shortcut:
+```bash
+orun shortcut llama3.1:8b l3
 ```
 
 ### Conversation History
