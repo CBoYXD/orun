@@ -1,3 +1,5 @@
+set shell := ["powershell.exe", "-c"]
+
 # Run the CLI
 run *args:
     uv run orun {{args}}
