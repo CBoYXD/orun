@@ -10,6 +10,7 @@ from peewee import (
     Model,
     SqliteDatabase,
     TextField,
+    fn,
 )
 
 from orun.utils import (
@@ -66,6 +67,91 @@ def initialize():
         db.execute_sql("SELECT is_active FROM aimodel LIMIT 1")
     except Exception:
         db.execute_sql("ALTER TABLE aimodel ADD COLUMN is_active BOOLEAN DEFAULT 0")
+
+    maintain_db_size()
+
+
+def maintain_db_size():
+    """Checks DB size and removes data based on a 'Profitability Score' (Age * Size)."""
+    try:
+        if not DB_PATH.exists():
+            return
+
+        size_mb = DB_PATH.stat().st_size / (1024 * 1024)
+        if size_mb > 10:
+            # 1. Fetch statistics for all conversations
+            # We need ID, Last Update Time, and Estimated Size (Sum of text content)
+            # COALESCE ensures we don't get None for empty conversations
+            stats_query = (Conversation
+                           .select(
+                               Conversation.id, 
+                               Conversation.updated_at, 
+                               fn.COALESCE(fn.SUM(fn.LENGTH(Message.content)), 0).alias('conv_size')
+                           )
+                           .join(Message, on=(Conversation.id == Message.conversation))
+                           .group_by(Conversation.id)
+                           .dicts())
+
+            candidates = []
+            total_tracked_size = 0
+            now = datetime.now()
+
+            for row in stats_query:
+                c_id = row['id']
+                c_size = row['conv_size']
+                c_updated = row['updated_at']
+
+                total_tracked_size += c_size
+
+                # Calculate Age in Days (float)
+                # Ensure a minimum age factor of 0.1 days to avoid zeroing out new heavy queries completely,
+                # but effectively protecting them compared to old stuff.
+                age_days = (now - c_updated).total_seconds() / 86400.0
+                if age_days < 0.1: 
+                    age_days = 0.1
+
+                # Profitability Score = Age * Size
+                # Large, Old files have massive scores.
+                # Small, Old files have medium scores.
+                # Large, New files have low scores.
+                score = age_days * c_size
+                
+                candidates.append({
+                    'id': c_id,
+                    'size': c_size,
+                    'score': score
+                })
+
+            if total_tracked_size == 0:
+                return
+
+            # Target: Free up ~10% of the text volume
+            target_reduction = total_tracked_size * 0.10
+
+            # Sort by Score Descending (Highest Profitability First)
+            candidates.sort(key=lambda x: x['score'], reverse=True)
+
+            ids_to_delete = []
+            accumulated_size = 0
+
+            for c in candidates:
+                if accumulated_size >= target_reduction:
+                    break
+                
+                ids_to_delete.append(c['id'])
+                accumulated_size += c['size']
+
+            if ids_to_delete:
+                q = Conversation.delete().where(Conversation.id.in_(ids_to_delete))
+                deleted_count = q.execute()
+                
+                # Reclaim space
+                db.execute_sql("VACUUM")
+                
+                print(colored(f"🧹 Database cleanup: Removed {deleted_count} conversations (approx {accumulated_size/1024:.1f} KB text) to optimize size.", Colors.GREY))
+
+    except Exception as e:
+        print_error(f"Database maintenance failed: {e}")
 
 
 def refresh_ollama_models():
