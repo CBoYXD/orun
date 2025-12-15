@@ -1,17 +1,5 @@
 set shell := ["powershell.exe", "-c"]
 
-# Run the CLI
-run *args:
-    uv run orun {{args}}
-
-# Install dependencies
-install:
-    uv sync
-
-# Build the project
-build:
-    uv build
-
 # Release a new version (bump -> sync -> build -> publish -> commit)
 release message:
     python scripts/bump_version.py
