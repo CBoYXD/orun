@@ -1,8 +1,8 @@
 import os
-import glob
 import argparse
 import ollama
 import sys
+from pathlib import Path
 
 # --- CONFIGURATION ---
 MODELS = {
@@ -17,29 +17,29 @@ MODELS = {
 DEFAULT_MODEL = "llama3.1:8b"
 
 SCREENSHOT_DIRS = [
-    # os.path.expandvars(r"%USERPROFILE%\Pictures\Screenshots"),
-    # os.path.expandvars(r"%USERPROFILE%\OneDrive\Pictures\Screenshots"),
-    # os.path.expandvars(r"%USERPROFILE%\OneDrive\Зображення\Знімки екрана"),
-    os.path.expandvars(r"C:\Users\Binar\Pictures\Screenshots"),
+    Path.home() / "Pictures" / "Screenshots",
+    Path.home() / "Pictures"
 ]
 
 def get_screenshot_path(index):
-    target_dir = next((d for d in SCREENSHOT_DIRS if os.path.exists(d)), None)
+    target_dir = next((d for d in SCREENSHOT_DIRS if d.exists()), None)
     if not target_dir:
         print("\033[91m⚠️ Screenshot folder not found!\033[0m")
         return None
 
-    files = sorted(
-        glob.glob(os.path.join(target_dir, "*.[pj][pn][g]*")),
-        key=os.path.getmtime,
-        reverse=True
-    )
+    # Gather files matching extensions
+    files = []
+    for ext in ["*.png", "*.jpg", "*.jpeg"]:
+        files.extend(target_dir.glob(ext))
+    
+    # Sort by modification time, newest first
+    files = sorted(files, key=lambda p: p.stat().st_mtime, reverse=True)
 
     if index > len(files):
         print(f"\033[91m⚠️ Screenshot #{index} not found.\033[0m")
         return None
 
-    return files[index - 1]
+    return str(files[index - 1])
 
 def handle_ollama_stream(stream):
     """Prints the stream and returns the full response."""
