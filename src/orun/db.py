@@ -3,6 +3,7 @@ from datetime import datetime
 
 from peewee import SqliteDatabase, Model, CharField, TextField, ForeignKeyField, DateTimeField, BooleanField
 import ollama
+from orun.utils import Colors, colored, print_warning, print_success, print_error, print_info
 
 DB_DIR = Path.home() / ".orun"
 DB_PATH = DB_DIR / "history.db"
@@ -67,19 +68,19 @@ def refresh_ollama_models():
                 if full_name not in current_full_names:
                     # Check if shortcut is taken by another model
                     if full_name in current_shortcuts:
-                        print(f"\033[93m⚠️ Model '{full_name}' found in Ollama but its name conflicts with an existing shortcut. Skipping auto-add.\033[0m")
+                        print_warning(f"Model '{full_name}' found in Ollama but its name conflicts with an existing shortcut. Skipping auto-add.")
                         continue
                     new_models_data.append({"full_name": full_name, "shortcut": full_name})
             
             if new_models_data:
                 with db.atomic():
                     AIModel.insert_many(new_models_data).execute()
-                print(f"\033[92mSynced {len(new_models_data)} new models from Ollama.\033[0m")
+                print_success(f"Synced {len(new_models_data)} new models from Ollama.")
             else:
-                print("\033[90mNo new models to sync.\033[0m")
+                print(colored("No new models to sync.", Colors.GREY))
                 
     except Exception as e:
-        print(f"\033[91m⚠️ Could not refresh Ollama models: {e}\033[0m")
+        print_error(f"Could not refresh Ollama models: {e}")
 
 
 def update_model_shortcut(identifier: str, new_shortcut: str) -> bool:
