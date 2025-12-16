@@ -211,7 +211,7 @@ def run_chat_mode(
 
     print_formatted_text(HTML(colored("💡 Special commands (local, not sent to AI):", Colors.GREY)))
     print_formatted_text(HTML(colored("   /yolo        - Toggle YOLO mode (no confirmations)", Colors.GREY)))
-    print_formatted_text(HTML(colored("   /clear       - Clear conversation history", Colors.GREY)))
+    print_formatted_text(HTML(colored("   /reload      - Reload configuration", Colors.GREY)))
     print_formatted_text(HTML(colored("   /undo        - Undo last turn", Colors.GREY)))
     print_formatted_text(HTML(colored("   /save [file] - Save chat to Markdown", Colors.GREY)))
     print_formatted_text(HTML(colored("   /run <cmd>   - Run shell command directly", Colors.GREY)))
@@ -343,7 +343,7 @@ def run_chat_mode(
                 yolo_mode.toggle(show_message=True)
                 continue
 
-            if cmd_root == "/reload-yolo":
+            if cmd_root == "/reload":
                 yolo_mode.reload_config()
                 continue
 

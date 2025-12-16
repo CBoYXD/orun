@@ -89,7 +89,7 @@ YOLO Mode allows the AI to execute shell commands without asking for confirmatio
 ### How to Use YOLO Mode
 1. **In Chat Mode** (always available):
    - Type `/yolo` to toggle YOLO mode on/off
-   - Type `/reload-yolo` to reload configuration after editing the config file
+   - Type `/reload` to reload configuration after editing the config file
    - Press `Ctrl+Y` as a hotkey to toggle YOLO mode
 2. **For Single Commands**: Use the `--yolo` flag
 
