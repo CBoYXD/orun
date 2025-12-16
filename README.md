@@ -1,11 +1,13 @@
 # orun-py
 
-A Python CLI Agent wrapper for Ollama. It combines chat capabilities with autonomous tools (file I/O, shell execution, web fetching) and built-in screenshot analysis.
+A Python CLI Agent wrapper for Ollama. It combines chat capabilities with autonomous tools (file I/O, shell execution, web fetching), built-in screenshot analysis, and 200+ prompt/strategy templates.
 
 ## Features
 
 - **Autonomous Agent:** Can read/write files, run shell commands, and fetch URLs (with user confirmation).
 - **Screenshot Analysis:** Auto-detects and attaches recent screenshots from your Pictures folder.
+- **Prompt Templates:** 200+ pre-defined templates for coding, analysis, writing, and more.
+- **Strategy Templates:** Chain-of-Thought, Tree-of-Thought, and other reasoning strategies.
 - **Conversation History:** SQLite-backed history lets you resume any session.
 - **Model Management:** Sync models from Ollama and manage shortcuts.
 
@@ -33,6 +35,36 @@ orun chat
 Start chat with a specific model:
 ```bash
 orun chat -m coder
+```
+
+### Prompt & Strategy Templates
+Use a prompt template:
+```bash
+orun "Review this code" -p review_code
+orun "Analyze this paper" -p analyze_paper
+```
+
+Use a reasoning strategy:
+```bash
+orun "Explain step by step" -s cot
+orun "Explore multiple approaches" -s tot
+```
+
+Combine prompt and strategy:
+```bash
+orun "Debug this issue" -p analyze_incident -s cod
+```
+
+List available templates:
+```bash
+orun prompts      # List all prompt templates
+orun strategies   # List all strategy templates
+```
+
+In chat mode, apply templates dynamically:
+```bash
+/prompt analyze_paper
+/strategy cot
 ```
 
 ### Analyze Screenshots

@@ -53,12 +53,26 @@ def main():
             commands.cmd_history(args.n)
             return
 
+        if cmd == "prompts":
+            commands.cmd_prompts()
+            return
+
+        if cmd == "strategies":
+            commands.cmd_strategies()
+            return
+
         if cmd == "chat":
             parser = argparse.ArgumentParser(prog="orun chat")
             parser.add_argument("prompt", nargs="*", help="Initial prompt")
             parser.add_argument("-m", "--model", help="Override model")
             parser.add_argument(
                 "-i", "--images", nargs="*", type=str, help="Screenshot indices"
+            )
+            parser.add_argument(
+                "-p", "--prompt", dest="use_prompt", help="Use a specific prompt template"
+            )
+            parser.add_argument(
+                "-s", "--strategy", dest="use_strategy", help="Use a specific strategy template"
             )
             parser.add_argument(
                 "--yolo",
@@ -92,6 +106,8 @@ def main():
                 image_paths,
                 use_tools=True,
                 yolo=args.yolo,
+                initial_prompt=args.use_prompt,
+                initial_strategy=args.use_strategy,
             )
             return
 
@@ -174,12 +190,18 @@ def main():
     # Default Query Mode (Single Shot)
     parser = argparse.ArgumentParser(
         description="AI CLI wrapper for Ollama",
-        usage="orun [command] [prompt] [options]\n\nCommands:\n  chat        Start interactive chat session\n  models      List available models\n  refresh     Sync models from Ollama\n  shortcut    Change model shortcut\n  set-active  Set active model\n  history     List recent conversations\n  c <id>      Continue conversation by ID\n  last        Continue last conversation",
+        usage="orun [command] [prompt] [options]\n\nCommands:\n  chat        Start interactive chat session\n  models      List available models\n  refresh     Sync models from Ollama\n  shortcut    Change model shortcut\n  set-active  Set active model\n  history     List recent conversations\n  prompts     List available prompt templates\n  strategies  List available strategy templates\n  c <id>      Continue conversation by ID\n  last        Continue last conversation\n\nSingle-shot options:\n  -p <prompt>     Use a specific prompt template\n  -s <strategy>   Use a specific strategy template",
     )
     parser.add_argument("prompt", nargs="*", help="Text prompt")
     parser.add_argument("-m", "--model", default="default", help="Model alias or name")
     parser.add_argument(
         "-i", "--images", nargs="*", type=str, help="Screenshot indices"
+    )
+    parser.add_argument(
+        "-p", "--prompt", dest="use_prompt", help="Use a specific prompt template"
+    )
+    parser.add_argument(
+        "-s", "--strategy", dest="use_strategy", help="Use a specific strategy template"
     )
     parser.add_argument(
         "--yolo", action="store_true", help="Enable YOLO mode (no confirmations)"
@@ -208,14 +230,15 @@ def main():
     user_prompt = " ".join(args.prompt) if args.prompt else ""
     image_paths = utils.get_image_paths(args.images)
 
-    # If no prompt/images provided, show help
-    if not user_prompt and not image_paths:
+    # If no prompt/images provided, but have a prompt/strategy template, show help
+    if not user_prompt and not image_paths and not args.use_prompt and not args.use_strategy:
         parser.print_help()
         return
 
     # Always enable tools for single shot too
     core.run_single_shot(
-        model_name, user_prompt, image_paths, use_tools=True, yolo=args.yolo
+        model_name, user_prompt, image_paths, use_tools=True, yolo=args.yolo,
+        prompt_template=args.use_prompt, strategy_template=args.use_strategy
     )
 
 

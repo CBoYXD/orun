@@ -1,5 +1,5 @@
-from orun import core, db
-from orun.utils import Colors, colored, print_error, print_success
+from orun import core, db, prompts_manager
+from orun.utils import Colors, colored, print_error, print_success, print_info
 from prompt_toolkit import print_formatted_text
 from prompt_toolkit.formatted_text import HTML, ANSI
 
@@ -133,3 +133,25 @@ def cmd_set_active(target: str):
         print_success(f"Active model set to: {active}")
     else:
         print_error(f"Could not set active model. '{target}' not found.")
+
+
+def cmd_prompts():
+    """Lists all available prompt templates."""
+    prompts = prompts_manager.list_prompts()
+    if prompts:
+        print_formatted_text(HTML(colored("\nAvailable Prompt Templates:", Colors.YELLOW)))
+        for prompt in prompts:
+            print_formatted_text(HTML(f"  - {colored(prompt, Colors.GREEN)}"))
+    else:
+        print_formatted_text(HTML(colored("No prompt templates found.", Colors.YELLOW)))
+
+
+def cmd_strategies():
+    """Lists all available strategy templates."""
+    strategies = prompts_manager.list_strategies()
+    if strategies:
+        print_formatted_text(HTML(colored("\nAvailable Strategy Templates:", Colors.YELLOW)))
+        for strategy in strategies:
+            print_formatted_text(HTML(f"  - {colored(strategy, Colors.GREEN)}"))
+    else:
+        print_formatted_text(HTML(colored("No strategy templates found.", Colors.YELLOW)))

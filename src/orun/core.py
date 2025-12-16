@@ -123,6 +123,8 @@ def run_single_shot(
     image_paths: list[str] | None,
     use_tools: bool = False,
     yolo: bool = False,
+    prompt_template: str | None = None,
+    strategy_template: str | None = None,
 ):
     """Handles a single query to the model."""
     utils.ensure_ollama_running()
@@ -135,9 +137,26 @@ def run_single_shot(
     print_formatted_text(HTML(colored(f"🤖 [{model_name}] Thinking...", Colors.CYAN)))
 
     conversation_id = db.create_conversation(model_name)
-    db.add_message(conversation_id, "user", user_prompt, image_paths or None)
 
-    messages = [{"role": "user", "content": user_prompt, "images": image_paths or None}]
+    # Build the complete prompt
+    full_prompt = user_prompt
+    if prompt_template:
+        template = prompts_manager.get_prompt(prompt_template)
+        if template:
+            full_prompt = f"{template}\n\n{user_prompt}" if user_prompt else template
+        else:
+            print_error(f"Prompt template '{prompt_template}' not found")
+
+    if strategy_template:
+        template = prompts_manager.get_strategy(strategy_template)
+        if template:
+            full_prompt = f"{full_prompt}\n\n{template}" if full_prompt else template
+        else:
+            print_error(f"Strategy template '{strategy_template}' not found")
+
+    db.add_message(conversation_id, "user", full_prompt, image_paths or None)
+
+    messages = [{"role": "user", "content": full_prompt, "images": image_paths or None}]
 
     # Tool definitions
     tool_defs = tools.TOOL_DEFINITIONS if use_tools else None
@@ -192,6 +211,8 @@ def run_chat_mode(
     conversation_id: int | None = None,
     use_tools: bool = False,
     yolo: bool = False,
+    initial_prompt_template: str | None = None,
+    initial_strategy_template: str | None = None,
 ):
     """Runs an interactive chat session."""
     utils.ensure_ollama_running()
@@ -218,6 +239,8 @@ def run_chat_mode(
     print_formatted_text(HTML(colored("   /search <q>  - Search the web", Colors.GREY)))
     print_formatted_text(HTML(colored("   /explain     - Explain last context", Colors.GREY)))
     print_formatted_text(HTML(colored("   /role <name> - Switch persona", Colors.GREY)))
+    print_formatted_text(HTML(colored("   /prompt <n>  - Apply prompt template", Colors.GREY)))
+    print_formatted_text(HTML(colored("   /strategy <n>- Apply strategy template", Colors.GREY)))
     print_formatted_text(HTML(colored("   /model <name>- Switch model", Colors.GREY)))
     print_formatted_text(HTML(colored("   Ctrl+Y       - Toggle YOLO mode (hotkey)", Colors.GREY)))
     if not use_tools:
@@ -291,15 +314,31 @@ def run_chat_mode(
             return None
 
     # Handle Initial Prompt
-    if initial_prompt or initial_images:
+    if initial_prompt or initial_images or initial_prompt_template or initial_strategy_template:
         if not initial_prompt:
-            initial_prompt = "Describe this image."
+            initial_prompt = "Describe this image." if initial_images else ""
+
+        # Build the complete prompt
+        full_prompt = initial_prompt
+        if initial_prompt_template:
+            template = prompts_manager.get_prompt(initial_prompt_template)
+            if template:
+                full_prompt = f"{template}\n\n{initial_prompt}" if initial_prompt else template
+            else:
+                print_error(f"Prompt template '{initial_prompt_template}' not found")
+
+        if initial_strategy_template:
+            template = prompts_manager.get_strategy(initial_strategy_template)
+            if template:
+                full_prompt = f"{full_prompt}\n\n{template}" if full_prompt else template
+            else:
+                print_error(f"Strategy template '{initial_strategy_template}' not found")
 
         print_formatted_text(HTML(colored(f"🤖 [{model_name}] Thinking...", Colors.CYAN)))
 
         user_message = {
             "role": "user",
-            "content": initial_prompt,
+            "content": full_prompt,
             "images": initial_images or None,
         }
         messages.append(user_message)
@@ -427,7 +466,7 @@ def run_chat_mode(
                 if not cmd_arg:
                     print_warning(f"Current model: {model_name}")
                     continue
-                
+
                 if db.set_active_model(cmd_arg):
                     # Update local variable to the real full name
                     model_name = db.get_active_model()
@@ -439,6 +478,38 @@ def run_chat_mode(
                     for alias, full in models.items():
                         print_formatted_text(HTML(f"  - {colored(alias, Colors.GREEN)} ({full})"))
                 continue
+
+            if cmd_root == "/prompt":
+                if not cmd_arg:
+                    print_warning("Usage: /prompt <name>")
+                    print_info(f"Available prompts: {', '.join(prompts_manager.list_prompts())}")
+                    continue
+
+                prompt_template = prompts_manager.get_prompt(cmd_arg)
+                if prompt_template:
+                    print_formatted_text(HTML(colored(f"📝 Applied prompt: {cmd_arg}", Colors.GREEN)))
+                    # Add as system message
+                    messages.append({'role': 'system', 'content': prompt_template})
+                    continue
+                else:
+                    print_error(f"Prompt '{cmd_arg}' not found.")
+                    continue
+
+            if cmd_root == "/strategy":
+                if not cmd_arg:
+                    print_warning("Usage: /strategy <name>")
+                    print_info(f"Available strategies: {', '.join(prompts_manager.list_strategies())}")
+                    continue
+
+                strategy_template = prompts_manager.get_strategy(cmd_arg)
+                if strategy_template:
+                    print_formatted_text(HTML(colored(f"🎯 Applied strategy: {cmd_arg}", Colors.GREEN)))
+                    # Add as system message
+                    messages.append({'role': 'system', 'content': strategy_template})
+                    continue
+                else:
+                    print_error(f"Strategy '{cmd_arg}' not found.")
+                    continue
 
             if cmd_root == "/search":
                 if not cmd_arg:
