@@ -12,6 +12,8 @@ from peewee import (
     TextField,
     fn,
 )
+
+from orun.rich_utils import console
 from orun.utils import (
     Colors,
     ensure_ollama_running,
@@ -19,7 +21,6 @@ from orun.utils import (
     print_success,
     print_warning,
 )
-from orun.rich_utils import console
 
 DB_DIR = Path.home() / ".orun"
 DB_PATH = DB_DIR / "main.db"
@@ -81,24 +82,27 @@ def maintain_db_size():
             # 1. Fetch statistics for all conversations
             # We need ID, Last Update Time, and Estimated Size (Sum of text content)
             # COALESCE ensures we don't get None for empty conversations
-            stats_query = (Conversation
-                           .select(
-                               Conversation.id, 
-                               Conversation.updated_at, 
-                               fn.COALESCE(fn.SUM(fn.LENGTH(Message.content)), 0).alias('conv_size')
-                           )
-                           .join(Message, on=(Conversation.id == Message.conversation))
-                           .group_by(Conversation.id)
-                           .dicts())
+            stats_query = (
+                Conversation.select(
+                    Conversation.id,
+                    Conversation.updated_at,
+                    fn.COALESCE(fn.SUM(fn.LENGTH(Message.content)), 0).alias(
+                        "conv_size"
+                    ),
+                )
+                .join(Message, on=(Conversation.id == Message.conversation))
+                .group_by(Conversation.id)
+                .dicts()
+            )
 
             candidates = []
             total_tracked_size = 0
             now = datetime.now()
 
             for row in stats_query:
-                c_id = row['id']
-                c_size = row['conv_size']
-                c_updated = row['updated_at']
+                c_id = row["id"]
+                c_size = row["conv_size"]
+                c_updated = row["updated_at"]
 
                 total_tracked_size += c_size
 
@@ -106,7 +110,7 @@ def maintain_db_size():
                 # Ensure a minimum age factor of 0.1 days to avoid zeroing out new heavy queries completely,
                 # but effectively protecting them compared to old stuff.
                 age_days = (now - c_updated).total_seconds() / 86400.0
-                if age_days < 0.1: 
+                if age_days < 0.1:
                     age_days = 0.1
 
                 # Profitability Score = Age * Size
@@ -114,12 +118,8 @@ def maintain_db_size():
                 # Small, Old files have medium scores.
                 # Large, New files have low scores.
                 score = age_days * c_size
-                
-                candidates.append({
-                    'id': c_id,
-                    'size': c_size,
-                    'score': score
-                })
+
+                candidates.append({"id": c_id, "size": c_size, "score": score})
 
             if total_tracked_size == 0:
                 return
@@ -128,7 +128,7 @@ def maintain_db_size():
             target_reduction = total_tracked_size * 0.10
 
             # Sort by Score Descending (Highest Profitability First)
-            candidates.sort(key=lambda x: x['score'], reverse=True)
+            candidates.sort(key=lambda x: x["score"], reverse=True)
 
             ids_to_delete = []
             accumulated_size = 0
@@ -136,18 +136,21 @@ def maintain_db_size():
             for c in candidates:
                 if accumulated_size >= target_reduction:
                     break
-                
-                ids_to_delete.append(c['id'])
-                accumulated_size += c['size']
+
+                ids_to_delete.append(c["id"])
+                accumulated_size += c["size"]
 
             if ids_to_delete:
                 q = Conversation.delete().where(Conversation.id.in_(ids_to_delete))
                 deleted_count = q.execute()
-                
+
                 # Reclaim space
                 db.execute_sql("VACUUM")
 
-                console.print(f"🧹 Database cleanup: Removed {deleted_count} conversations (approx {accumulated_size/1024:.1f} KB text) to optimize size.", style=Colors.GREY)
+                console.print(
+                    f"🧹 Database cleanup: Removed {deleted_count} conversations (approx {accumulated_size / 1024:.1f} KB text) to optimize size.",
+                    style=Colors.GREY,
+                )
 
     except Exception as e:
         print_error(f"Database maintenance failed: {e}")
@@ -224,7 +227,7 @@ def set_active_model(model_name: str) -> bool:
     query = AIModel.update(is_active=True).where(AIModel.full_name == model_name)
     if query.execute() > 0:
         return True
-    
+
     query = AIModel.update(is_active=True).where(AIModel.shortcut == model_name)
     if query.execute() > 0:
         return True
@@ -234,7 +237,7 @@ def set_active_model(model_name: str) -> bool:
 
 def get_active_model() -> str | None:
     """Get the currently active model name."""
-    model = AIModel.select().where(AIModel.is_active == True).first()
+    model = AIModel.select().where(AIModel.is_active).first()
     return model.full_name if model else None
 
 
@@ -307,36 +310,39 @@ def get_conversation(conversation_id: int) -> dict | None:
         "updated_at": conv.updated_at.isoformat(),
     }
 
+
 def undo_last_turn(conversation_id: int) -> bool:
     """Removes the last turn (User + Assistant) from the conversation."""
     with db.atomic():
         # Get last message
-        last_msg = (Message
-                   .select()
-                   .where(Message.conversation_id == conversation_id)
-                   .order_by(Message.id.desc())
-                   .first())
-        
+        last_msg = (
+            Message.select()
+            .where(Message.conversation_id == conversation_id)
+            .order_by(Message.id.desc())
+            .first()
+        )
+
         if not last_msg:
             return False
 
         # If it's assistant, try to find the preceding user message
-        if last_msg.role == 'assistant':
-            user_msg = (Message
-                        .select()
-                        .where(
-                            (Message.conversation_id == conversation_id) & 
-                            (Message.id < last_msg.id)
-                        )
-                        .order_by(Message.id.desc())
-                        .first())
-            
+        if last_msg.role == "assistant":
+            user_msg = (
+                Message.select()
+                .where(
+                    (Message.conversation_id == conversation_id)
+                    & (Message.id < last_msg.id)
+                )
+                .order_by(Message.id.desc())
+                .first()
+            )
+
             last_msg.delete_instance()
-            if user_msg and user_msg.role == 'user':
+            if user_msg and user_msg.role == "user":
                 user_msg.delete_instance()
             return True
-            
-        elif last_msg.role == 'user':
+
+        elif last_msg.role == "user":
             # Just delete the user message (orphan or mid-turn)
             last_msg.delete_instance()
             return True

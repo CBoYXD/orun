@@ -1,19 +1,25 @@
 """Rich utilities for enhanced terminal output."""
 
-from typing import Any, Optional
-from rich.console import Console
-from rich.table import Table
-from rich.panel import Panel
-from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
-from rich.text import Text
-from rich.prompt import Prompt
-from rich.live import Live
-from rich.markdown import Markdown
-from rich.syntax import Syntax
-from rich.tree import Tree
-from rich.columns import Columns
-from rich.align import Align
 import sys
+from typing import Any, Optional
+
+from rich.align import Align
+from rich.columns import Columns
+from rich.console import Console
+from rich.markdown import Markdown
+from rich.panel import Panel
+from rich.progress import (
+    BarColumn,
+    Progress,
+    SpinnerColumn,
+    TaskProgressColumn,
+    TextColumn,
+)
+from rich.prompt import Prompt
+from rich.syntax import Syntax
+from rich.table import Table
+from rich.text import Text
+from rich.tree import Tree
 
 # Create a console instance with emoji support disabled for Windows
 if sys.platform == "win32":
@@ -24,6 +30,7 @@ else:
 
 class Colors:
     """Color constants for Rich."""
+
     RED = "red"
     GREEN = "green"
     YELLOW = "yellow"
@@ -136,7 +143,9 @@ def print_columns(items: list, equal: bool = False, expand: bool = False) -> Non
     console.print(columns)
 
 
-def prompt_input(message: str, default: Optional[str] = None, password: bool = False) -> str:
+def prompt_input(
+    message: str, default: Optional[str] = None, password: bool = False
+) -> str:
     """Prompt for user input."""
     return Prompt.ask(message, default=default, password=password)
 
@@ -159,30 +168,6 @@ def print_centered(text: str, style: str = Colors.WHITE) -> None:
 def clear_line() -> None:
     """Clear the current line."""
     console.clear()
-
-
-# Compatibility functions to replace prompt_toolkit
-def print_formatted_text(text: Any) -> None:
-    """Print formatted text (compatibility with prompt_toolkit)."""
-    console.print(text)
-
-
-class HTML:
-    """Compatibility class for prompt_toolkit HTML."""
-    def __init__(self, text: str):
-        self.text = text
-
-    def __str__(self) -> str:
-        return self.text
-
-
-class ANSI:
-    """Compatibility class for prompt_toolkit ANSI."""
-    def __init__(self, text: str):
-        self.text = text
-
-    def __str__(self) -> str:
-        return self.text
 
 
 # Initialize Rich console on import

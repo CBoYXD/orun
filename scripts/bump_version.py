@@ -50,13 +50,15 @@ def main():
         init_content = init_path.read_text(encoding="utf-8")
         if "__version__" in init_content:
             init_content = re.sub(
-                r'__version__\s*=\s*".*"', f'__version__ = "{new_version}"', init_content
+                r'__version__\s*=\s*".*"',
+                f'__version__ = "{new_version}"',
+                init_content,
             )
         else:
             if init_content and not init_content.endswith("\n"):
                 init_content += "\n"
             init_content += f'__version__ = "{new_version}"\n'
-        
+
         init_path.write_text(init_content, encoding="utf-8")
         print(f"Updated {init_path} to version {new_version}")
 

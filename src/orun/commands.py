@@ -1,7 +1,7 @@
-from orun import core, db, prompts_manager
-from orun.utils import Colors, print_error, print_success, print_info
+from orun import db, prompts_manager
 from orun.rich_utils import console, create_table, print_table
 from orun.tui import OrunApp
+from orun.utils import Colors, print_error, print_success
 
 
 def cmd_models():
@@ -17,7 +17,12 @@ def cmd_models():
 
     for alias, model_name in models.items():
         status = "🟢 Active" if model_name == active_model else ""
-        table.add_row(alias, model_name, status, style=Colors.GREEN if model_name == active_model else None)
+        table.add_row(
+            alias,
+            model_name,
+            status,
+            style=Colors.GREEN if model_name == active_model else None,
+        )
 
     print_table(table)
     console.print("\nUse -m <alias> to select a model.", style=Colors.YELLOW)
@@ -43,7 +48,9 @@ def cmd_history(limit: int = 10):
         table.add_row(str(conv["id"]), conv["model"], first_msg)
 
     print_table(table)
-    console.print("\nUse 'orun c <id>' to continue a conversation.", style=Colors.YELLOW)
+    console.print(
+        "\nUse 'orun c <id>' to continue a conversation.", style=Colors.YELLOW
+    )
 
 
 def cmd_continue(
@@ -144,10 +151,14 @@ def cmd_strategies():
     """Lists all available strategy templates using a Rich table."""
     strategies = prompts_manager.list_strategies()
     if strategies:
-        table = create_table("Available Strategy Templates", ["Strategy Name", "Description"])
+        table = create_table(
+            "Available Strategy Templates", ["Strategy Name", "Description"]
+        )
         for strategy in strategies:
             description = prompts_manager.get_strategy(strategy)
-            desc_preview = description[:50] + "..." if len(description) > 50 else description
+            desc_preview = (
+                description[:50] + "..." if len(description) > 50 else description
+            )
             table.add_row(strategy, desc_preview, style=Colors.GREEN)
         print_table(table)
     else:

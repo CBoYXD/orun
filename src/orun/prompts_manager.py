@@ -1,9 +1,11 @@
 from pathlib import Path
+
 from orun.utils import print_error
 
 PROMPTS_DIR = Path("data/prompts")
 STRATEGIES_DIR = Path("data/strategies")
 ROLES_DIR = PROMPTS_DIR / "roles"
+
 
 def get_prompt(name: str) -> str:
     """Loads a prompt from the prompts directory, checking roles subdir if applicable."""
@@ -24,8 +26,9 @@ def get_prompt(name: str) -> str:
         except Exception as e:
             print_error(f"Failed to load prompt '{name}': {e}")
             return ""
-    
+
     return ""
+
 
 def get_strategy(name: str) -> str:
     """Loads a strategy from the strategies directory."""
@@ -45,6 +48,7 @@ def get_strategy(name: str) -> str:
             # If it's JSON, try to extract the relevant text
             if path.suffix == ".json":
                 import json
+
                 try:
                     data = json.loads(content)
                     # Handle different JSON structures

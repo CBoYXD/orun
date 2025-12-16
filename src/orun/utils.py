@@ -6,10 +6,8 @@ import time
 from pathlib import Path
 
 import ollama
-from .rich_utils import (
-    console, Colors, print_error, print_success,
-    print_warning, print_info
-)
+
+from .rich_utils import Colors, console, print_error, print_info, print_warning
 
 
 def ensure_ollama_running():
@@ -58,7 +56,7 @@ def ensure_ollama_running():
             console.print("Timed out waiting for Ollama to start.", style=Colors.RED)
             console.print(
                 "Please start Ollama manually (run 'ollama serve' or open the app).",
-                style=Colors.INFO
+                style=Colors.INFO,
             )
             sys.exit(1)
 
