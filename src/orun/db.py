@@ -219,14 +219,20 @@ def get_models() -> dict[str, str]:
     return {m.shortcut: m.full_name for m in AIModel.select()}
 
 
-def set_active_model(model_name: str):
-    """Set the active model."""
+def set_active_model(model_name: str) -> bool:
+    """Set the active model. Returns True if successful."""
     # Reset all
     AIModel.update(is_active=False).execute()
     # Set new active. Try to match full_name first, then shortcut.
     query = AIModel.update(is_active=True).where(AIModel.full_name == model_name)
-    if query.execute() == 0:
-        AIModel.update(is_active=True).where(AIModel.shortcut == model_name).execute()
+    if query.execute() > 0:
+        return True
+    
+    query = AIModel.update(is_active=True).where(AIModel.shortcut == model_name)
+    if query.execute() > 0:
+        return True
+
+    return False
 
 
 def get_active_model() -> str | None:

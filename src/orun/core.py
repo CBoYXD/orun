@@ -427,9 +427,17 @@ def run_chat_mode(
                 if not cmd_arg:
                     print_warning(f"Current model: {model_name}")
                     continue
-                model_name = cmd_arg
-                db.set_active_model(model_name)
-                print_formatted_text(HTML(colored(f"🤖 Switched to model: {model_name}", Colors.GREEN)))
+                
+                if db.set_active_model(cmd_arg):
+                    # Update local variable to the real full name
+                    model_name = db.get_active_model()
+                    print_formatted_text(HTML(colored(f"🤖 Switched to model: {model_name}", Colors.GREEN)))
+                else:
+                    print_error(f"Model '{cmd_arg}' not found.")
+                    print_info("Available models:")
+                    models = db.get_models()
+                    for alias, full in models.items():
+                        print_formatted_text(HTML(f"  - {colored(alias, Colors.GREEN)} ({full})"))
                 continue
 
             if cmd_root == "/search":
