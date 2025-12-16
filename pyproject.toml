@@ -8,6 +8,8 @@ dependencies = [
     "ollama>=0.6.1",
     "peewee>=3.18",
     "prompt-toolkit>=3.0.0",
+    "rich>=14.2.0",
+    "textual>=0.70.0",
 ]
 
 [project.scripts]

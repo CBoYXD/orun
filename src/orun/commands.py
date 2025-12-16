@@ -1,41 +1,37 @@
 from orun import core, db, prompts_manager
-from orun.utils import Colors, colored, print_error, print_success, print_info
-from prompt_toolkit import print_formatted_text
-from prompt_toolkit.formatted_text import HTML, ANSI
+from orun.utils import Colors, print_error, print_success, print_info
+from orun.rich_utils import console, create_table, print_table
+from orun.tui import OrunApp
 
 
 def cmd_models():
-    """Prints all available models and their aliases."""
+    """Prints all available models and their aliases using a Rich table."""
     models = db.get_models()
     active_model = db.get_active_model()
 
-    print_formatted_text(HTML(colored("\nAvailable Models:", Colors.YELLOW)))
     if not models:
-        print("  No models found.")
+        console.print("  No models found.", style=Colors.YELLOW)
         return
 
-    max_alias_len = max(len(alias) for alias in models.keys())
+    table = create_table("Available Models", ["Alias", "Model", "Status"])
 
     for alias, model_name in models.items():
-        marker = ""
-        if model_name == active_model:
-            marker = colored(" (active)", Colors.MAGENTA)
+        status = "🟢 Active" if model_name == active_model else ""
+        table.add_row(alias, model_name, status, style=Colors.GREEN if model_name == active_model else None)
 
-        print_formatted_text(
-            HTML(f"  {colored(f'{alias:<{max_alias_len}}', Colors.GREEN)} : {colored(model_name, Colors.BLUE)}{marker}")
-        )
-
-    print_formatted_text(HTML(colored("\nUse -m <alias> to select a model.", Colors.YELLOW)))
+    print_table(table)
+    console.print("\nUse -m <alias> to select a model.", style=Colors.YELLOW)
 
 
 def cmd_history(limit: int = 10):
-    """Prints recent conversations."""
+    """Prints recent conversations using a Rich table."""
     conversations = db.get_recent_conversations(limit)
     if not conversations:
-        print_formatted_text(HTML(colored("No conversations found.", Colors.YELLOW)))
+        console.print("No conversations found.", style=Colors.YELLOW)
         return
 
-    print_formatted_text(HTML(colored("\nRecent Conversations:", Colors.YELLOW)))
+    table = create_table("Recent Conversations", ["ID", "Model", "Preview"])
+
     # Reverse to show oldest first (within the recent limit), so newest is at the bottom
     for conv in reversed(conversations):
         messages = db.get_conversation_messages(conv["id"])
@@ -44,11 +40,10 @@ def cmd_history(limit: int = 10):
             if messages and len(messages[0]["content"]) > 50
             else (messages[0]["content"] if messages else "Empty")
         )
-        print_formatted_text(
-            HTML(f"  {colored(f'{conv['id']:>3}', Colors.GREEN)} | {colored(f'{conv['model']:<20}', Colors.BLUE)} | {first_msg}")
-        )
+        table.add_row(str(conv["id"]), conv["model"], first_msg)
 
-    print_formatted_text(HTML(colored("\nUse 'orun c <id>' to continue a conversation.", Colors.YELLOW)))
+    print_table(table)
+    console.print("\nUse 'orun c <id>' to continue a conversation.", style=Colors.YELLOW)
 
 
 def cmd_continue(
@@ -69,19 +64,17 @@ def cmd_continue(
 
     # Set YOLO mode if requested (redundant if passed to run_chat_mode, but keeps local feedback)
     if yolo:
-        # We can still print the message here or let run_chat_mode do it?
-        # run_chat_mode doesn't print "YOLO MODE ENABLED" explicitly on start, only yolo.toggle does.
-        # But wait, run_chat_mode prints special commands.
-        print_formatted_text(HTML(colored("🔥 YOLO MODE ENABLED", Colors.RED)))
+        console.print("🔥 YOLO MODE ENABLED", style=Colors.RED)
 
-    core.run_chat_mode(
-        model_name,
-        prompt or "",
-        image_paths or [],
-        conversation_id,
+    app = OrunApp(
+        model_name=model_name,
+        initial_prompt=prompt or "",
+        initial_images=image_paths or [],
+        conversation_id=conversation_id,
         use_tools=use_tools,
         yolo=yolo,
     )
+    app.run()
 
 
 def cmd_last(
@@ -109,7 +102,7 @@ def cmd_last(
 
 def cmd_refresh():
     """Syncs models from Ollama."""
-    print_formatted_text(HTML(colored("🔄 Syncing models from Ollama...", Colors.CYAN)))
+    console.print("🔄 Syncing models from Ollama...", style=Colors.CYAN)
     db.refresh_ollama_models()
 
 
@@ -136,22 +129,26 @@ def cmd_set_active(target: str):
 
 
 def cmd_prompts():
-    """Lists all available prompt templates."""
+    """Lists all available prompt templates using a Rich table."""
     prompts = prompts_manager.list_prompts()
     if prompts:
-        print_formatted_text(HTML(colored("\nAvailable Prompt Templates:", Colors.YELLOW)))
+        table = create_table("Available Prompt Templates", ["Template Name"])
         for prompt in prompts:
-            print_formatted_text(HTML(f"  - {colored(prompt, Colors.GREEN)}"))
+            table.add_row(prompt, style=Colors.GREEN)
+        print_table(table)
     else:
-        print_formatted_text(HTML(colored("No prompt templates found.", Colors.YELLOW)))
+        console.print("No prompt templates found.", style=Colors.YELLOW)
 
 
 def cmd_strategies():
-    """Lists all available strategy templates."""
+    """Lists all available strategy templates using a Rich table."""
     strategies = prompts_manager.list_strategies()
     if strategies:
-        print_formatted_text(HTML(colored("\nAvailable Strategy Templates:", Colors.YELLOW)))
+        table = create_table("Available Strategy Templates", ["Strategy Name", "Description"])
         for strategy in strategies:
-            print_formatted_text(HTML(f"  - {colored(strategy, Colors.GREEN)}"))
+            description = prompts_manager.get_strategy(strategy)
+            desc_preview = description[:50] + "..." if len(description) > 50 else description
+            table.add_row(strategy, desc_preview, style=Colors.GREEN)
+        print_table(table)
     else:
-        print_formatted_text(HTML(colored("No strategy templates found.", Colors.YELLOW)))
+        console.print("No strategy templates found.", style=Colors.YELLOW)

@@ -4,46 +4,12 @@ import subprocess
 import sys
 import time
 from pathlib import Path
-import html
 
 import ollama
-from prompt_toolkit import print_formatted_text
-from prompt_toolkit.formatted_text import HTML
-
-
-class Colors:
-    RED = "ansired"
-    GREEN = "ansigreen"
-    YELLOW = "ansiyellow"
-    BLUE = "ansiblue"
-    MAGENTA = "ansimagenta"
-    CYAN = "ansicyan"
-    GREY = "ansigray" # 'gray' or 'brightblack' depending on PT version, 'ansigray' works usually or 'gray'
-    # prompt_toolkit uses 'gray' or '#888888'. Let's use 'gray'.
-    RESET = "" # Not needed for HTML tags, closing tag handles it
-
-
-def colored(text: str, color: str) -> str:
-    """Wraps text in HTML color tags for prompt_toolkit."""
-    if color == Colors.GREY:
-        color = "gray" # fix map
-    return f"<{color}>{html.escape(str(text))}</{color}>"
-
-
-def print_error(msg: str):
-    print_formatted_text(HTML(colored(f"❌ {msg}", Colors.RED)))
-
-
-def print_success(msg: str):
-    print_formatted_text(HTML(colored(f"✅ {msg}", Colors.GREEN)))
-
-
-def print_warning(msg: str):
-    print_formatted_text(HTML(colored(f"⚠️ {msg}", Colors.YELLOW)))
-
-
-def print_info(msg: str):
-    print_formatted_text(HTML(colored(msg, Colors.CYAN)))
+from .rich_utils import (
+    console, Colors, print_error, print_success,
+    print_warning, print_info
+)
 
 
 def ensure_ollama_running():
@@ -77,25 +43,22 @@ def ensure_ollama_running():
                 )
 
             # Wait for it to become ready
-            print_formatted_text(
-                HTML(colored("Waiting for Ollama to start...", Colors.GREY)),
-                end="",
-                flush=True,
-            )
+            console.print("Waiting for Ollama to start...", style=Colors.DIM, end="")
             for _ in range(5):  # Wait up to 5 seconds (reduced from 10)
                 try:
                     time.sleep(1)
                     ollama.list()
-                    print()  # Newline
-                    print_success("Ollama started successfully.")
+                    console.print()  # Newline
+                    console.print("Ollama started successfully.", style=Colors.GREEN)
                     return
                 except Exception:
-                    print(".", end="", flush=True)
+                    console.print(".", end="", flush=True)
 
-            print()
-            print_error("Timed out waiting for Ollama to start.")
-            print_info(
-                "Please start Ollama manually (run 'ollama serve' or open the app)."
+            console.print()
+            console.print("Timed out waiting for Ollama to start.", style=Colors.RED)
+            console.print(
+                "Please start Ollama manually (run 'ollama serve' or open the app).",
+                style=Colors.INFO
             )
             sys.exit(1)
 
@@ -116,10 +79,10 @@ def handle_cli_errors(func):
         try:
             return func(*args, **kwargs)
         except KeyboardInterrupt:
-            print("\n\n👋 Goodbye!")
+            console.print("\n\n👋 Goodbye!", style=Colors.GREY)
             sys.exit(0)
         except Exception as e:
-            print()  # Newline
+            console.print()  # Newline
             print_error(f"An unexpected error occurred: {e}")
             sys.exit(1)
 
@@ -134,6 +97,7 @@ def setup_console():
     """Configures the console for proper emoji support on Windows."""
     if sys.platform == "win32":
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
 
 def get_screenshot_path(index: int) -> str | None:
@@ -199,5 +163,5 @@ def get_image_paths(image_args: list[str] | None) -> list[str]:
             path = get_screenshot_path(idx)
             if path:
                 image_paths.append(path)
-                print_formatted_text(HTML(colored(f"🖼️  Added: {os.path.basename(path)}", Colors.GREY)))
+                console.print(f"🖼️  Added: {os.path.basename(path)}", style=Colors.DIM)
     return image_paths

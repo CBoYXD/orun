@@ -3,113 +3,224 @@ import os
 import sys
 
 from orun import commands, core, db, utils
-from orun.utils import Colors, colored, print_error, print_warning
-from prompt_toolkit import print_formatted_text
-from prompt_toolkit.formatted_text import HTML, ANSI
+
+from orun.utils import Colors, print_error, print_warning
+
+from orun.rich_utils import console
+
+from orun.tui import OrunApp
+
 
 
 @utils.handle_cli_errors
+
 def main():
+
     # Setup
+
     utils.setup_console()
+
     db.initialize()
+
+
 
     models = db.get_models()
 
+
+
     # Subcommand Dispatch
+
     if len(sys.argv) > 1:
+
         cmd = sys.argv[1]
 
+
+
         if cmd == "models":
+
             commands.cmd_models()
+
             return
+
+
 
         if cmd == "refresh":
+
             commands.cmd_refresh()
+
             return
+
+
 
         if cmd == "shortcut":
+
             if len(sys.argv) < 4:
+
                 print_warning(
+
                     "Usage: orun shortcut <model_name_or_shortcut> <new_shortcut>"
+
                 )
+
                 return
+
             commands.cmd_shortcut(sys.argv[2], sys.argv[3])
+
             return
+
+
 
         if cmd == "set-active":
+
             if len(sys.argv) < 3:
+
                 print_warning("Usage: orun set-active <model_name_or_shortcut>")
+
                 return
+
             commands.cmd_set_active(sys.argv[2])
+
             return
+
+
 
         if cmd == "history":
+
             parser = argparse.ArgumentParser(prog="orun history")
+
             parser.add_argument(
+
                 "-n", type=int, default=10, help="Number of conversations to show"
+
             )
+
             args = parser.parse_args(sys.argv[2:])
+
             commands.cmd_history(args.n)
+
             return
+
+
 
         if cmd == "prompts":
+
             commands.cmd_prompts()
+
             return
+
+
 
         if cmd == "strategies":
+
             commands.cmd_strategies()
+
             return
 
+
+
         if cmd == "chat":
+
             parser = argparse.ArgumentParser(prog="orun chat")
+
             parser.add_argument("prompt", nargs="*", help="Initial prompt")
+
             parser.add_argument("-m", "--model", help="Override model")
+
             parser.add_argument(
+
                 "-i", "--images", nargs="*", type=str, help="Screenshot indices"
+
             )
+
             parser.add_argument(
+
                 "-p", "--prompt", dest="use_prompt", help="Use a specific prompt template"
+
             )
+
             parser.add_argument(
+
                 "-s", "--strategy", dest="use_strategy", help="Use a specific strategy template"
+
             )
+
             parser.add_argument(
+
                 "--yolo",
+
                 action="store_true",
+
                 help="Enable YOLO mode (no confirmations)",
+
             )
+
             args = parser.parse_args(sys.argv[2:])
+
+
 
             image_paths = utils.get_image_paths(args.images)
 
+
+
             # Resolve model
+
             model_name = (
+
                 models.get(args.model, args.model)
+
                 if args.model
+
                 else db.get_active_model()
+
             )
+
+
 
             if not model_name:
-                print_error("No active model set.")
-                print_formatted_text(HTML(
-                    f"Please specify a model with {colored('-m <model>', Colors.YELLOW)} or set a default with {colored('orun set-active <model>', Colors.YELLOW)}"
-                ))
+
+                console.print("No active model set.", style=Colors.RED)
+
+                console.print(
+
+                    f"Please specify a model with -m <model> or set a default with orun set-active <model>",
+
+                    style=Colors.YELLOW
+
+                )
+
                 return
 
+
+
             if args.model:
+
                 db.set_active_model(model_name)
 
-            core.run_chat_mode(
-                model_name,
-                " ".join(args.prompt) if args.prompt else None,
-                image_paths,
+
+
+            app = OrunApp(
+
+                model_name=model_name,
+
+                initial_prompt=" ".join(args.prompt) if args.prompt else None,
+
+                initial_images=image_paths,
+
                 use_tools=True,
+
                 yolo=args.yolo,
+
                 initial_prompt_template=args.use_prompt,
+
                 initial_strategy_template=args.use_strategy,
+
             )
+
+            app.run()
+
             return
+
+
 
         if cmd == "c":
             parser = argparse.ArgumentParser(prog="orun c")
@@ -221,10 +332,11 @@ def main():
         model_name = db.get_active_model()
 
     if not model_name:
-        print_error("No active model set.")
-        print_formatted_text(HTML(
-            f"Please specify a model with {colored('-m <model>', Colors.YELLOW)} or set a default with {colored('orun set-active <model>', Colors.YELLOW)}"
-        ))
+        console.print("No active model set.", style=Colors.RED)
+        console.print(
+            f"Please specify a model with -m <model> or set a default with orun set-active <model>",
+            style=Colors.YELLOW
+        )
         return
 
     user_prompt = " ".join(args.prompt) if args.prompt else ""
@@ -246,7 +358,7 @@ if __name__ == "__main__":
     try:
         main()
     except KeyboardInterrupt:
-        print_formatted_text(HTML("\n\n👋 Goodbye!"))
+        console.print("\n\n👋 Goodbye!", style=Colors.GREY)
         try:
             sys.exit(0)
         except SystemExit:

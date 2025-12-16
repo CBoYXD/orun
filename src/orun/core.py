@@ -2,10 +2,10 @@ import ollama
 import json
 import datetime
 from orun import db, utils, tools, prompts_manager
-from orun.utils import Colors, colored, print_error, print_warning, print_success, print_info
+from orun.utils import Colors, print_error, print_warning, print_success, print_info
 from orun.yolo import yolo_mode
-from prompt_toolkit import prompt as pt_prompt, print_formatted_text
-from prompt_toolkit.formatted_text import HTML
+from orun.rich_utils import console, create_table, print_table, create_panel, print_panel
+from prompt_toolkit import prompt as pt_prompt
 from prompt_toolkit.key_binding import KeyBindings
 from prompt_toolkit.keys import Keys
 from prompt_toolkit.application import run_in_terminal
@@ -17,13 +17,13 @@ def handle_ollama_stream(stream) -> str:
     try:
         for chunk in stream:
             content = chunk["message"]["content"]
-            print(content, end="", flush=True)
+            console.print(content, end="", flush=True, style=Colors.GREY)
             full_response += content
     except Exception as e:
-        print()  # Newline
+        console.print()  # Newline
         print_error(f"Stream Error: {e}")
     finally:
-        print()
+        console.print()
     return full_response
 
 
@@ -50,7 +50,7 @@ def execute_tool_calls(tool_calls, messages):
 
             # If command is blocked
             if "BLOCKED" in skip_reason:
-                print_formatted_text(HTML(f"\n<{Colors.RED}>❌ {skip_reason}</{Colors.RED}>"))
+                console.print(f"\n❌ {skip_reason}", style=Colors.RED)
                 messages.append(
                     {"role": "tool", "content": f"Command blocked: {skip_reason}"}
                 )
@@ -59,31 +59,25 @@ def execute_tool_calls(tool_calls, messages):
             # Skip confirmation if needed
             if skip_confirm:
                 should_confirm = False
-                print_formatted_text(
-                    HTML(f"\n<{Colors.MAGENTA}>🛠️  AI executing:</{Colors.MAGENTA}> <{Colors.CYAN}>{func_name}</{Colors.CYAN}>")
-                )
-                print_formatted_text(HTML(f"<{Colors.GREY}>Arguments: {args}</{Colors.GREY}>"))
+                console.print(f"\n🛠️  AI executing: {func_name}", style=Colors.MAGENTA)
+                console.print(f"Arguments: {args}", style=Colors.DIM)
                 if "WHITELISTED" in skip_reason:
-                    print_formatted_text(HTML(f"<{Colors.GREEN}>{skip_reason}</{Colors.GREEN}>"))
+                    console.print(skip_reason, style=Colors.GREEN)
                 elif "YOLO MODE" in skip_reason:
-                    print_formatted_text(HTML(f"<{Colors.YELLOW}>{skip_reason}</{Colors.YELLOW}>"))
+                    console.print(skip_reason, style=Colors.YELLOW)
 
         # Confirmation Prompt (or display if auto-confirming)
         if should_confirm:
-            print_formatted_text(
-                HTML(f"\n<{Colors.MAGENTA}>🛠️  AI wants to execute:</{Colors.MAGENTA}> <{Colors.CYAN}>{func_name}</{Colors.CYAN}>")
-            )
-            print_formatted_text(HTML(f"<{Colors.GREY}>Arguments: {args}</{Colors.GREY}>"))
+            console.print(f"\n🛠️  AI wants to execute: {func_name}", style=Colors.MAGENTA)
+            console.print(f"Arguments: {args}", style=Colors.DIM)
 
             # Show hint about YOLO mode or whitelist
             if func_name == "run_shell_command" and "command" in args:
                 if not yolo_mode.is_command_whitelisted(args["command"]):
-                    print_formatted_text(
-                        HTML(f"<{Colors.GREY}>💡 Tip: Use /yolo to enable YOLO mode or add this command to whitelist</{Colors.GREY}>")
-                    )
+                    console.print(f"💡 Tip: Use /yolo to enable YOLO mode or add this command to whitelist", style=Colors.GREY)
 
             # confirm = input(f"{Colors.YELLOW}Allow? [y/N]: {Colors.RESET}").lower()
-            confirm = pt_prompt(HTML(f"<{Colors.YELLOW}>Allow? [y/N]: </{Colors.YELLOW}>")).lower()
+            confirm = console.input(f"[yellow]Allow? [y/N]: [/yellow]").lower()
 
             if confirm != "y":
                 print_warning("Tool execution denied.")
@@ -95,12 +89,12 @@ def execute_tool_calls(tool_calls, messages):
         # Execute the tool
         func = tools.AVAILABLE_TOOLS.get(func_name)
         if func:
-            print_formatted_text(HTML(f"<{Colors.GREY}>Running...</{Colors.GREY}>"))
+            console.print("Running...", style=Colors.DIM)
             result = func(**args)
 
             # Check if result is excessively long (e.g. reading a huge file)
             preview = result[:100] + "..." if len(result) > 100 else result
-            print_formatted_text(HTML(f"<{Colors.GREY}>Result: {preview}</{Colors.GREY}>"))
+            console.print(f"Result: {preview}", style=Colors.DIM)
 
             messages.append(
                 {
@@ -132,9 +126,9 @@ def run_single_shot(
     # Set YOLO mode if requested
     if yolo:
         yolo_mode.yolo_active = True
-        print_formatted_text(HTML(colored("🔥 YOLO MODE ENABLED for this command", Colors.RED)))
+        console.print("🔥 YOLO MODE ENABLED for this command", style=Colors.RED)
 
-    print_formatted_text(HTML(colored(f"🤖 [{model_name}] Thinking...", Colors.CYAN)))
+    console.print(f"🤖 [{model_name}] Thinking...", style=Colors.CYAN)
 
     conversation_id = db.create_conversation(model_name)
 
@@ -177,16 +171,14 @@ def run_single_shot(
                 execute_tool_calls(msg["tool_calls"], messages)
 
                 # Follow up with the tool outputs
-                print_formatted_text(
-                    HTML(colored(f"🤖 [{model_name}] Processing tool output...", Colors.CYAN))
-                )
+                console.print(f"🤖 [{model_name}] Processing tool output...", style=Colors.CYAN)
                 stream = ollama.chat(model=model_name, messages=messages, stream=True)
                 final_response = handle_ollama_stream(stream)
                 if final_response:
                     db.add_message(conversation_id, "assistant", final_response)
             else:
                 # Normal response
-                print(msg["content"])
+                console.print(msg["content"])
                 db.add_message(conversation_id, "assistant", msg["content"])
         else:
             # Standard streaming
@@ -196,7 +188,7 @@ def run_single_shot(
                 db.add_message(conversation_id, "assistant", response)
 
     except Exception as e:
-        print()
+        console.print()
         print_error(f"Error: {e}")
     finally:
         # Reset YOLO mode if it was enabled for this command
@@ -221,33 +213,29 @@ def run_chat_mode(
     if yolo:
         yolo_mode.yolo_active = True
 
-    print_formatted_text(HTML(colored(f"Entering chat mode with '{model_name}'.", Colors.GREEN)))
+    console.print(f"Entering chat mode with '{model_name}'.", style=Colors.GREEN)
     if use_tools:
-        print_formatted_text(
-            HTML(colored(
-                "🛠️  Agent Mode Enabled: AI can read/write files and run commands.",
-                Colors.MAGENTA,
-            ))
+        console.print(
+            "🛠️  Agent Mode Enabled: AI can read/write files and run commands.",
+            style=Colors.MAGENTA,
         )
 
-    print_formatted_text(HTML(colored("💡 Special commands (local, not sent to AI):", Colors.GREY)))
-    print_formatted_text(HTML(colored("   /yolo        - Toggle YOLO mode (no confirmations)", Colors.GREY)))
-    print_formatted_text(HTML(colored("   /reload      - Reload configuration", Colors.GREY)))
-    print_formatted_text(HTML(colored("   /undo        - Undo last turn", Colors.GREY)))
-    print_formatted_text(HTML(colored("   /save [file] - Save chat to Markdown", Colors.GREY)))
-    print_formatted_text(HTML(colored("   /run <cmd>   - Run shell command directly", Colors.GREY)))
-    print_formatted_text(HTML(colored("   /search <q>  - Search the web", Colors.GREY)))
-    print_formatted_text(HTML(colored("   /explain     - Explain last context", Colors.GREY)))
-    print_formatted_text(HTML(colored("   /role <name> - Switch persona", Colors.GREY)))
-    print_formatted_text(HTML(colored("   /prompt <n>  - Apply prompt template", Colors.GREY)))
-    print_formatted_text(HTML(colored("   /strategy <n>- Apply strategy template", Colors.GREY)))
-    print_formatted_text(HTML(colored("   /model <name>- Switch model", Colors.GREY)))
-    print_formatted_text(HTML(colored("   Ctrl+Y       - Toggle YOLO mode (hotkey)", Colors.GREY)))
+    console.print("💡 Special commands (local, not sent to AI):", style=Colors.DIM)
+    console.print("   /yolo        - Toggle YOLO mode (no confirmations)", style=Colors.DIM)
+    console.print("   /reload      - Reload configuration", style=Colors.DIM)
+    console.print("   /undo        - Undo last turn", style=Colors.DIM)
+    console.print("   /save [file] - Save chat to Markdown", style=Colors.DIM)
+    console.print("   /run <cmd>   - Run shell command directly", style=Colors.DIM)
+    console.print("   /search <q>  - Search the web", style=Colors.DIM)
+    console.print("   /explain     - Explain last context", style=Colors.DIM)
+    console.print("   /role <name> - Switch persona", style=Colors.DIM)
+    console.print("   /prompt <n>  - Apply prompt template", style=Colors.DIM)
+    console.print("   /strategy <n>- Apply strategy template", style=Colors.DIM)
+    console.print("   /model <name>- Switch model", style=Colors.DIM)
+    console.print("   Ctrl+Y       - Toggle YOLO mode (hotkey)", style=Colors.DIM)
     if not use_tools:
-        print_formatted_text(
-            HTML(colored(
-                "   (Note: YOLO mode affects only tool-based commands)", Colors.GREY
-            ))
+        console.print(
+            "   (Note: YOLO mode affects only tool-based commands)", style=Colors.GREY
         )
     print("Type 'quit' or 'exit' to end the session.")
 
@@ -268,11 +256,9 @@ def run_chat_mode(
 
     if conversation_id:
         messages = db.get_conversation_messages(conversation_id)
-        print_formatted_text(
-            HTML(colored(
-                f"Loaded {len(messages)} messages from conversation #{conversation_id}",
-                Colors.GREY,
-            ))
+        console.print(
+            f"Loaded {len(messages)} messages from conversation #{conversation_id}",
+            style=Colors.GREY,
         )
     else:
         messages = []
@@ -298,15 +284,15 @@ def run_chat_mode(
                     # Simple version: 1-level depth (Tool -> Final Answer).
                     # Complex agents loop. Let's do a simple follow-up stream.
 
-                    print_formatted_text(HTML(colored("Assistant: ", Colors.BLUE)), end="")
+                    console.print("Assistant: ", style=Colors.BLUE, end="")
                     stream = ollama.chat(model=model_name, messages=msgs, stream=True)
                     return handle_ollama_stream(stream)
                 else:
-                    print_formatted_text(HTML(colored("Assistant: ", Colors.BLUE)), end="")
-                    print(msg["content"])
+                    console.print("Assistant: ", style=Colors.BLUE, end="")
+                    console.print(msg["content"])
                     return msg["content"]
             else:
-                print_formatted_text(HTML(colored("Assistant: ", Colors.BLUE)), end="")
+                console.print("Assistant: ", style=Colors.BLUE, end="")
                 stream = ollama.chat(model=model_name, messages=msgs, stream=True)
                 return handle_ollama_stream(stream)
         except Exception as e:
@@ -334,7 +320,7 @@ def run_chat_mode(
             else:
                 print_error(f"Strategy template '{initial_strategy_template}' not found")
 
-        print_formatted_text(HTML(colored(f"🤖 [{model_name}] Thinking...", Colors.CYAN)))
+        console.print(f"🤖 [{model_name}] Thinking...", style=Colors.CYAN)
 
         user_message = {
             "role": "user",
@@ -359,7 +345,7 @@ def run_chat_mode(
             # Get user input with enhanced key bindings
             # Use prompt_toolkit for Ctrl+Y support
             user_input = pt_prompt(
-                HTML("<ansigreen>You: </ansigreen>"), key_bindings=kb
+                "You: ", key_bindings=kb, style="ansigreen"
             )
 
             if user_input.lower() in ["quit", "exit"]:
@@ -389,7 +375,7 @@ def run_chat_mode(
             if cmd_root in ["/clear", "/cleat"]: # Handle typo from user request
                 messages = []
                 conversation_id = db.create_conversation(model_name)
-                print_formatted_text(HTML(colored("\n🧹 Conversation cleared. Started new session.", Colors.GREEN)))
+                console.print("\n🧹 Conversation cleared. Started new session.", style=Colors.GREEN)
                 continue
 
             if cmd_root == "/undo":
@@ -402,11 +388,11 @@ def run_chat_mode(
                     
                     # Remove from DB
                     if db.undo_last_turn(conversation_id):
-                        print_formatted_text(HTML(colored("↩️  Undid last turn.", Colors.GREEN)))
+                        console.print("↩️  Undid last turn.", style=Colors.GREEN)
                     else:
-                        print_formatted_text(HTML(colored("⚠️  Could not undo in database (maybe sync issue).", Colors.YELLOW)))
+                        console.print("⚠️  Could not undo in database (maybe sync issue).", style=Colors.YELLOW)
                 else:
-                    print_formatted_text(HTML(colored("⚠️  Nothing to undo.", Colors.YELLOW)))
+                    console.print("⚠️  Nothing to undo.", style=Colors.YELLOW)
                 continue
 
             if cmd_root == "/save":
@@ -420,7 +406,7 @@ def run_chat_mode(
                             role = msg['role'].upper()
                             content = msg.get('content', '')
                             f.write(f"**{role}**:\n{content}\n\n---\n\n")
-                    print_formatted_text(HTML(colored(f"💾 Saved conversation to {filename}", Colors.GREEN)))
+                    console.print(f"💾 Saved conversation to {filename}", style=Colors.GREEN)
                 except Exception as e:
                     print_error(f"Failed to save: {e}")
                 continue
@@ -429,15 +415,15 @@ def run_chat_mode(
                 if not cmd_arg:
                     print_warning("Usage: /run <command>")
                     continue
-                print_formatted_text(HTML(colored(f"💻 Executing: {cmd_arg}", Colors.CYAN)))
+                console.print(f"💻 Executing: {cmd_arg}", style=Colors.CYAN)
                 result = tools.run_shell_command(cmd_arg)
-                print(result)
+                console.print(result)
                 continue
 
             if cmd_root == "/explain":
                 prompt_text = prompts_manager.get_prompt("explain")
                 if prompt_text:
-                    print_formatted_text(HTML(colored("🔍 Asking for explanation...", Colors.CYAN)))
+                    console.print("🔍 Asking for explanation...", style=Colors.CYAN)
                     # Treat as user input
                     user_input = prompt_text
                     # Proceed to normal processing
@@ -453,7 +439,7 @@ def run_chat_mode(
                 
                 role_prompt = prompts_manager.get_prompt(cmd_arg)
                 if role_prompt:
-                    print_formatted_text(HTML(colored(f"🎭 Applied role: {cmd_arg}", Colors.GREEN)))
+                    console.print(f"🎭 Applied role: {cmd_arg}", style=Colors.GREEN)
                     # Add as system message or instruction
                     messages.append({'role': 'system', 'content': role_prompt})
                     # db.add_message(conversation_id, 'system', role_prompt) # Schema might not support 'system' yet, skipping DB for now or map to user
@@ -470,13 +456,13 @@ def run_chat_mode(
                 if db.set_active_model(cmd_arg):
                     # Update local variable to the real full name
                     model_name = db.get_active_model()
-                    print_formatted_text(HTML(colored(f"🤖 Switched to model: {model_name}", Colors.GREEN)))
+                    console.print(f"🤖 Switched to model: {model_name}", style=Colors.GREEN)
                 else:
                     print_error(f"Model '{cmd_arg}' not found.")
                     print_info("Available models:")
                     models = db.get_models()
                     for alias, full in models.items():
-                        print_formatted_text(HTML(f"  - {colored(alias, Colors.GREEN)} ({full})"))
+                        console.print(f"  - [{Colors.GREEN}]{alias}[/{Colors.GREEN}] ({full})")
                 continue
 
             if cmd_root == "/prompt":
@@ -487,7 +473,7 @@ def run_chat_mode(
 
                 prompt_template = prompts_manager.get_prompt(cmd_arg)
                 if prompt_template:
-                    print_formatted_text(HTML(colored(f"📝 Applied prompt: {cmd_arg}", Colors.GREEN)))
+                    console.print(f"📝 Applied prompt: {cmd_arg}", style=Colors.GREEN)
                     # Add as system message
                     messages.append({'role': 'system', 'content': prompt_template})
                     continue
@@ -503,7 +489,7 @@ def run_chat_mode(
 
                 strategy_template = prompts_manager.get_strategy(cmd_arg)
                 if strategy_template:
-                    print_formatted_text(HTML(colored(f"🎯 Applied strategy: {cmd_arg}", Colors.GREEN)))
+                    console.print(f"🎯 Applied strategy: {cmd_arg}", style=Colors.GREEN)
                     # Add as system message
                     messages.append({'role': 'system', 'content': strategy_template})
                     continue
@@ -515,7 +501,7 @@ def run_chat_mode(
                 if not cmd_arg:
                     print_warning("Usage: /search <query>")
                     continue
-                print_formatted_text(HTML(colored(f"🌐 Searching web for: {cmd_arg}", Colors.CYAN)))
+                console.print(f"🌐 Searching web for: {cmd_arg}", style=Colors.CYAN)
                 # Instruct the AI to use its tool capabilities (fetch_url, etc)
                 # We format this as a user message to drive the agent
                 user_input = f"Search the web for '{cmd_arg}' and provide a summary of the findings."
@@ -524,7 +510,7 @@ def run_chat_mode(
             
             # TODO: Add /temp implementation if we want to pass options to ollama.chat
 
-            print_formatted_text(HTML(colored(f"🤖 [{model_name}] Thinking...", Colors.CYAN)))
+            console.print(f"🤖 [{model_name}] Thinking...", style=Colors.CYAN)
 
             # Only add to messages if it's not a special command (already handled above if continued)
             messages.append({"role": "user", "content": user_input})
@@ -539,7 +525,7 @@ def run_chat_mode(
         except EOFError:
             break
         except KeyboardInterrupt:
-            print_formatted_text(HTML(colored("\nChat session interrupted.", Colors.YELLOW)))
+            console.print("\nChat session interrupted.", style=Colors.YELLOW)
             break
         except Exception as e:
             print()

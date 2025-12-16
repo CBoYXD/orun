@@ -12,17 +12,14 @@ from peewee import (
     TextField,
     fn,
 )
-from prompt_toolkit import print_formatted_text
-from prompt_toolkit.formatted_text import HTML
-
 from orun.utils import (
     Colors,
-    colored,
     ensure_ollama_running,
     print_error,
     print_success,
     print_warning,
 )
+from orun.rich_utils import console
 
 DB_DIR = Path.home() / ".orun"
 DB_PATH = DB_DIR / "main.db"
@@ -149,8 +146,8 @@ def maintain_db_size():
                 
                 # Reclaim space
                 db.execute_sql("VACUUM")
-                
-                print_formatted_text(HTML(colored(f"🧹 Database cleanup: Removed {deleted_count} conversations (approx {accumulated_size/1024:.1f} KB text) to optimize size.", Colors.GREY)))
+
+                console.print(f"🧹 Database cleanup: Removed {deleted_count} conversations (approx {accumulated_size/1024:.1f} KB text) to optimize size.", style=Colors.GREY)
 
     except Exception as e:
         print_error(f"Database maintenance failed: {e}")
@@ -188,7 +185,7 @@ def refresh_ollama_models():
                     AIModel.insert_many(new_models_data).execute()
                 print_success(f"Synced {len(new_models_data)} new models from Ollama.")
             else:
-                print_formatted_text(HTML(colored("No new models to sync.", Colors.GREY)))
+                console.print("No new models to sync.", style=Colors.GREY)
 
     except Exception as e:
         print_error(f"Could not refresh Ollama models: {e}")
