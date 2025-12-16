@@ -106,8 +106,8 @@ def main():
                 image_paths,
                 use_tools=True,
                 yolo=args.yolo,
-                initial_prompt=args.use_prompt,
-                initial_strategy=args.use_strategy,
+                initial_prompt_template=args.use_prompt,
+                initial_strategy_template=args.use_strategy,
             )
             return
 
