@@ -335,7 +335,8 @@ class ChatScreen(Screen):
             ("/run <cmd>", "Run a shell command"),
             ("/search <url>", "Fetch and summarize a web page"),
             ("/prompt <name...>", "Activate prompt templates"),
-            ("/prompts [page]", "List available prompt templates"),
+            ("/prompt remove <name>", "Remove a prompt template"),
+            ("/prompts [page|active]", "List available/active prompt templates"),
             ("/strategy <name>", "Activate or clear strategy template"),
             ("/strategies [page]", "List available strategy templates"),
             ("/model [alias]", "Show or switch the active model"),
@@ -496,58 +497,99 @@ class ChatScreen(Screen):
             if not tokens:
                 self.chat_container.mount(
                     Static(
-                        "[yellow]Usage: /prompt <name...> | clear[/]",
+                        "[yellow]Usage: /prompt <name...> | remove <name> | clear[/]",
                         classes="status",
                     )
                 )
-            elif tokens[0].lower() in {"clear", "none"}:
-                self.active_prompt_templates = []
-                self.chat_container.mount(
-                    Static("[green]Prompt templates cleared.[/]", classes="status")
-                )
             else:
-                activated = []
-                missing = []
-                for name in tokens:
-                    content = await asyncio.to_thread(prompts_manager.get_prompt, name)
-                    if not content:
-                        missing.append(name)
-                    else:
-                        if name not in self.active_prompt_templates:
-                            self.active_prompt_templates.append(name)
-                        activated.append(name)
-                messages = []
-                if activated:
-                    messages.append(
-                        f"[green]Prompt(s) {', '.join(activated)} activated.[/]"
+                first = tokens[0].lower()
+                if first in {"clear", "none"}:
+                    self.active_prompt_templates = []
+                    self.chat_container.mount(
+                        Static("[green]Prompt templates cleared.[/]", classes="status")
                     )
-                if missing:
-                    messages.append(f"[yellow]Missing: {', '.join(missing)}[/]")
-                if not messages:
-                    messages.append("[yellow]No prompts processed.[/]")
-                self.chat_container.mount(Static("\n".join(messages), classes="status"))
+                elif first == "remove":
+                    if len(tokens) < 2:
+                        self.chat_container.mount(
+                            Static(
+                                "[yellow]Usage: /prompt remove <name>[/]",
+                                classes="status",
+                            )
+                        )
+                    else:
+                        name = tokens[1]
+                        if name in self.active_prompt_templates:
+                            self.active_prompt_templates = [
+                                p for p in self.active_prompt_templates if p != name
+                            ]
+                            self.chat_container.mount(
+                                Static(
+                                    f"[green]Prompt '{name}' removed.[/]",
+                                    classes="status",
+                                )
+                            )
+                        else:
+                            self.chat_container.mount(
+                                Static(
+                                    f"[yellow]Prompt '{name}' not active.[/]",
+                                    classes="status",
+                                )
+                            )
+                else:
+                    activated = []
+                    missing = []
+                    for name in tokens:
+                        content = await asyncio.to_thread(
+                            prompts_manager.get_prompt, name
+                        )
+                        if not content:
+                            missing.append(name)
+                        else:
+                            if name not in self.active_prompt_templates:
+                                self.active_prompt_templates.append(name)
+                            activated.append(name)
+                    messages = []
+                    if activated:
+                        messages.append(
+                            f"[green]Prompt(s) {', '.join(activated)} activated.[/]"
+                        )
+                    if missing:
+                        messages.append(f"[yellow]Missing: {', '.join(missing)}[/]")
+                    if not messages:
+                        messages.append("[yellow]No prompts processed.[/]")
+                    self.chat_container.mount(Static("\n".join(messages), classes="status"))
         elif cmd == "/prompts":
-            page_arg = arg.strip()
-            page, warning = self.parse_page_argument(page_arg)
-            if warning:
-                self.chat_container.mount(Static(warning, classes="status"))
-            prompts = await asyncio.to_thread(prompts_manager.list_prompts)
-            current_line = (
-                "[dim]Current: "
-                + (
-                    ", ".join(self.active_prompt_templates)
-                    if self.active_prompt_templates
-                    else "(none)"
+            tokens = [tok for tok in arg.split() if tok]
+            if tokens and tokens[0].lower() == "active":
+                if self.active_prompt_templates:
+                    lines = ["[cyan]Active Prompts:[/cyan]"]
+                    for name in self.active_prompt_templates:
+                        lines.append(f"  [green]{name}[/green]")
+                else:
+                    lines = ["[cyan]Active Prompts:[/cyan]", "  (none)"]
+                self.chat_container.mount(Static("\n".join(lines), classes="status"))
+            else:
+                page_arg = tokens[0] if tokens else ""
+                page, warning = self.parse_page_argument(page_arg)
+                if warning:
+                    self.chat_container.mount(Static(warning, classes="status"))
+                prompts = await asyncio.to_thread(prompts_manager.list_prompts)
+                current_line = (
+                    "[dim]Current: "
+                    + (
+                        ", ".join(self.active_prompt_templates)
+                        if self.active_prompt_templates
+                        else "(none)"
+                    )
+                    + "[/]"
                 )
-                + "[/]"
-            )
-            self.show_template_list(
-                prompts,
-                page,
-                "Available Prompts:",
-                current_line=current_line,
-                store_state=True,
-            )
+                self.show_template_list(
+                    prompts,
+                    page,
+                    "Available Prompts:",
+                    current_line=current_line,
+                    store_state=True,
+                )
         elif cmd == "/strategy":
             tokens = [tok for tok in arg.split() if tok]
             if not tokens:
