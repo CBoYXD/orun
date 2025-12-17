@@ -26,3 +26,16 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/orun"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"data/prompts" = "orun/data/prompts"
+"data/strategies" = "orun/data/strategies"
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "src",
+    "data",
+    "pyproject.toml",
+    "justfile",
+    "uv.lock",
+]

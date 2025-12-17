@@ -1,10 +1,54 @@
+import os
+from dataclasses import dataclass
 from pathlib import Path
 
 from orun.utils import print_error
 
-PROMPTS_DIR = Path("data/prompts")
-STRATEGIES_DIR = Path("data/strategies")
+
+def _candidate_data_dirs() -> list[Path]:
+    """Return possible locations for packaged or local prompt data."""
+    candidates: list[Path] = []
+
+    # User override
+    env_dir = os.environ.get("ORUN_DATA_DIR")
+    if env_dir:
+        candidates.append(Path(env_dir))
+
+    # Packaged data (when distributed via wheel)
+    candidates.append(Path(__file__).resolve().parent / "data")
+
+    # Repo-root data (local dev layout: repo/data next to src/)
+    candidates.append(Path(__file__).resolve().parents[2] / "data")
+
+    # Current working directory (fallback)
+    candidates.append(Path.cwd() / "data")
+
+    return candidates
+
+
+def _resolve_data_dir(kind: str) -> Path:
+    """Find the first existing directory for the given kind (prompts/strategies)."""
+    for base in _candidate_data_dirs():
+        candidate = base / kind
+        if candidate.exists():
+            return candidate
+    # Default to repo-style path even if missing so callers can still build paths
+    return Path("data") / kind
+
+
+PROMPTS_DIR = _resolve_data_dir("prompts")
+STRATEGIES_DIR = _resolve_data_dir("strategies")
 ROLES_DIR = PROMPTS_DIR / "roles"
+
+
+@dataclass
+class PromptBuild:
+    """Result of composing user input with prompt/strategy templates."""
+
+    text: str
+    applied_prompt: str | None
+    applied_strategy: str | None
+    missing: list[str]
 
 
 def get_prompt(name: str) -> str:
@@ -91,3 +135,43 @@ def list_strategies() -> list[str]:
         strategies.extend([p.stem for p in STRATEGIES_DIR.glob("*.json")])
     # Remove duplicates while preserving order
     return sorted(list(set(strategies)))
+
+
+def compose_prompt(
+    user_prompt: str,
+    prompt_template: str | None = None,
+    strategy_template: str | None = None,
+) -> PromptBuild:
+    """Combine user text with selected prompt/strategy templates."""
+    parts: list[str] = []
+    missing: list[str] = []
+    applied_prompt: str | None = None
+    applied_strategy: str | None = None
+
+    if prompt_template:
+        prompt_text = get_prompt(prompt_template)
+        if prompt_text:
+            parts.append(prompt_text.strip())
+            applied_prompt = prompt_template
+        else:
+            missing.append(f"prompt '{prompt_template}'")
+
+    if user_prompt:
+        parts.append(user_prompt.strip())
+
+    if strategy_template:
+        strategy_text = get_strategy(strategy_template)
+        if strategy_text:
+            parts.append(strategy_text.strip())
+            applied_strategy = strategy_template
+        else:
+            missing.append(f"strategy '{strategy_template}'")
+
+    full_text = "\n\n".join(part for part in parts if part)
+
+    return PromptBuild(
+        text=full_text,
+        applied_prompt=applied_prompt,
+        applied_strategy=applied_strategy,
+        missing=missing,
+    )

@@ -132,20 +132,16 @@ def run_single_shot(
     conversation_id = db.create_conversation(model_name)
 
     # Build the complete prompt
-    full_prompt = user_prompt
-    if prompt_template:
-        template = prompts_manager.get_prompt(prompt_template)
-        if template:
-            full_prompt = f"{template}\n\n{user_prompt}" if user_prompt else template
-        else:
-            print_error(f"Prompt template '{prompt_template}' not found")
+    build = prompts_manager.compose_prompt(
+        user_prompt=user_prompt,
+        prompt_template=prompt_template,
+        strategy_template=strategy_template,
+    )
 
-    if strategy_template:
-        template = prompts_manager.get_strategy(strategy_template)
-        if template:
-            full_prompt = f"{full_prompt}\n\n{template}" if full_prompt else template
-        else:
-            print_error(f"Strategy template '{strategy_template}' not found")
+    for missing in build.missing:
+        print_error(f"Template {missing} not found")
+
+    full_prompt = build.text
 
     db.add_message(conversation_id, "user", full_prompt, image_paths or None)
 
