@@ -84,6 +84,8 @@ class ChatScreen(Screen):
         self.use_tools = use_tools
         self.initial_prompt_template = initial_prompt_template
         self.initial_strategy_template = initial_strategy_template
+        self.active_prompt_template = None
+        self.active_strategy_template = None
 
         if yolo:
             yolo_mode.yolo_active = True
@@ -186,13 +188,30 @@ class ChatScreen(Screen):
         msg_widget.scroll_visible()
         return msg_widget
 
+    def build_user_payload(self, user_input: str) -> str:
+        prompt_name = self.active_prompt_template
+        strategy_name = self.active_strategy_template
+        if not prompt_name and not strategy_name:
+            return user_input
+
+        build = prompts_manager.compose_prompt(
+            user_prompt=user_input,
+            prompt_template=prompt_name,
+            strategy_template=strategy_name,
+        )
+        for missing in build.missing:
+            self.chat_container.mount(
+                Static(f"[yellow]Template {missing} not found.[/]", classes="status")
+            )
+        return build.text or user_input
+
     def get_command_entries(self) -> list[tuple[str, str]]:
         """Available slash commands and their descriptions."""
         return [
             ("/run <cmd>", "Run a shell command"),
             ("/search <url>", "Fetch and summarize a web page"),
-            ("/prompt [name]", "List or preview prompt templates"),
-            ("/strategy [name]", "List or preview strategy templates"),
+            ("/prompt <name>", "Set/list prompt templates"),
+            ("/strategy <name>", "Set/list strategy templates"),
             ("/model [alias]", "Show or switch the active model"),
             ("/reload", "Reload model list from Ollama"),
         ]
@@ -265,10 +284,11 @@ class ChatScreen(Screen):
                 self.input_widget.focus()
             return
 
-        # Show User Message
+        # Build final payload (including active templates) & show user message
+        payload = self.build_user_payload(user_input)
         self.mount_message("user", user_input)
-        self.messages.append({"role": "user", "content": user_input})
-        db.add_message(self.conversation_id, "user", user_input)
+        self.messages.append({"role": "user", "content": payload})
+        db.add_message(self.conversation_id, "user", payload)
 
         # Start AI Processing
         self.process_ollama_turn()
@@ -334,8 +354,10 @@ class ChatScreen(Screen):
                     trigger_model = True
                     self.process_ollama_turn()
         elif cmd == "/prompt":
-            prompts = await asyncio.to_thread(prompts_manager.list_prompts)
-            if not arg:
+            sub = arg.strip()
+            sub_lower = sub.lower()
+            if not sub or sub_lower in {"list", "ls"}:
+                prompts = await asyncio.to_thread(prompts_manager.list_prompts)
                 if not prompts:
                     self.chat_container.mount(
                         Static("[yellow]No prompts found.[/]", classes="status")
@@ -347,29 +369,40 @@ class ChatScreen(Screen):
                         lines.append(f"  [green]{name}[/green]")
                     if len(prompts) > len(preview):
                         lines.append(f"... ({len(prompts) - len(preview)} more)")
+                    current = (
+                        f"[dim]Current: {self.active_prompt_template}[/]"
+                        if self.active_prompt_template
+                        else "[dim]Current: (none)[/]"
+                    )
+                    lines.append(current)
                     self.chat_container.mount(Static("\n".join(lines), classes="status"))
+            elif sub_lower in {"clear", "none"}:
+                self.active_prompt_template = None
+                self.chat_container.mount(
+                    Static("[green]Prompt template cleared.[/]", classes="status")
+                )
             else:
-                content = await asyncio.to_thread(prompts_manager.get_prompt, arg)
+                content = await asyncio.to_thread(prompts_manager.get_prompt, sub)
                 if not content:
                     self.chat_container.mount(
                         Static(
-                            f"[yellow]Prompt '{arg}' not found.[/]",
+                            f"[yellow]Prompt '{sub}' not found.[/]",
                             classes="status",
                         )
                     )
                 else:
-                    preview = (
-                        content if len(content) <= 1200 else content[:1200] + "\n..."
-                    )
+                    self.active_prompt_template = sub
                     self.chat_container.mount(
                         Static(
-                            f"[cyan]Prompt: {arg}[/]\n{preview}",
+                            f"[green]Prompt '{sub}' activated ({len(content)} chars).[/]",
                             classes="status",
                         )
                     )
         elif cmd == "/strategy":
-            strategies = await asyncio.to_thread(prompts_manager.list_strategies)
-            if not arg:
+            sub = arg.strip()
+            sub_lower = sub.lower()
+            if not sub or sub_lower in {"list", "ls"}:
+                strategies = await asyncio.to_thread(prompts_manager.list_strategies)
                 if not strategies:
                     self.chat_container.mount(
                         Static("[yellow]No strategies found.[/]", classes="status")
@@ -383,23 +416,32 @@ class ChatScreen(Screen):
                         lines.append(
                             f"... ({len(strategies) - len(preview)} more)"
                         )
+                    current = (
+                        f"[dim]Current: {self.active_strategy_template}[/]"
+                        if self.active_strategy_template
+                        else "[dim]Current: (none)[/]"
+                    )
+                    lines.append(current)
                     self.chat_container.mount(Static("\n".join(lines), classes="status"))
+            elif sub_lower in {"clear", "none"}:
+                self.active_strategy_template = None
+                self.chat_container.mount(
+                    Static("[green]Strategy template cleared.[/]", classes="status")
+                )
             else:
-                content = await asyncio.to_thread(prompts_manager.get_strategy, arg)
+                content = await asyncio.to_thread(prompts_manager.get_strategy, sub)
                 if not content:
                     self.chat_container.mount(
                         Static(
-                            f"[yellow]Strategy '{arg}' not found.[/]",
+                            f"[yellow]Strategy '{sub}' not found.[/]",
                             classes="status",
                         )
                     )
                 else:
-                    preview = (
-                        content if len(content) <= 1200 else content[:1200] + "\n..."
-                    )
+                    self.active_strategy_template = sub
                     self.chat_container.mount(
                         Static(
-                            f"[cyan]Strategy: {arg}[/]\n{preview}",
+                            f"[green]Strategy '{sub}' activated ({len(content)} chars).[/]",
                             classes="status",
                         )
                     )
