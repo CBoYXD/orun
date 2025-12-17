@@ -1,3 +1,4 @@
+import html
 import os
 import subprocess
 import urllib.request
@@ -6,18 +7,194 @@ from html.parser import HTMLParser
 # --- Helper for HTML Parsing ---
 
 
-class SimpleHTMLParser(HTMLParser):
+class StructuredHTMLParser(HTMLParser):
+    """Convert HTML into a lightly formatted text/markdown output."""
+
+    HEADING_PREFIX = {
+        "h1": "# ",
+        "h2": "## ",
+        "h3": "### ",
+        "h4": "#### ",
+        "h5": "##### ",
+        "h6": "###### ",
+    }
+
+    BLOCK_TAGS = {
+        "p",
+        "div",
+        "section",
+        "article",
+        "header",
+        "footer",
+        "main",
+        "aside",
+    }
+
     def __init__(self):
         super().__init__()
-        self.text = []
+        self.parts: list[str] = []
+        self.list_stack: list[dict] = []
+        self.skip_depth = 0
+        self.capture_title = False
+        self.title_buffer: list[str] = []
+        self.title: str | None = None
+        self.in_pre = False
+        self.in_code = False
+        self.link_href: str | None = None
+        self.link_text: list[str] = []
+
+    def _append(self, text: str, ensure_space: bool = False) -> None:
+        if not text:
+            return
+        if ensure_space and self.parts:
+            if not self.parts[-1].endswith((" ", "\n")) and not text.startswith(
+                (" ", "\n")
+            ):
+                self.parts.append(" ")
+        self.parts.append(text)
+
+    def handle_starttag(self, tag, attrs):
+        tag = tag.lower()
+        attr_map = dict(attrs)
+
+        if tag in ("script", "style"):
+            self.skip_depth += 1
+            return
+
+        if tag == "title":
+            self.capture_title = True
+            self.title_buffer = []
+            return
+
+        if self.skip_depth:
+            return
+
+        if tag in self.HEADING_PREFIX:
+            self._append("\n\n" + self.HEADING_PREFIX[tag])
+        elif tag in self.BLOCK_TAGS:
+            self._append("\n\n")
+        elif tag == "br":
+            self._append("\n")
+        elif tag == "blockquote":
+            self._append("\n\n> ")
+        elif tag == "ul":
+            self.list_stack.append({"type": "ul", "index": 0})
+            self._append("\n")
+        elif tag == "ol":
+            self.list_stack.append({"type": "ol", "index": 0})
+            self._append("\n")
+        elif tag == "li":
+            indent = "  " * max(len(self.list_stack) - 1, 0)
+            bullet = "- "
+            if self.list_stack:
+                current = self.list_stack[-1]
+                if current["type"] == "ol":
+                    current["index"] += 1
+                    bullet = f"{current['index']}. "
+            self._append("\n" + indent + bullet)
+        elif tag == "a":
+            self.link_href = attr_map.get("href", "").strip()
+            self.link_text = []
+        elif tag == "pre":
+            self.in_pre = True
+            self._append("\n```\n")
+        elif tag == "code":
+            if not self.in_pre:
+                self.in_code = True
+                self._append("`")
+        elif tag in ("strong", "b"):
+            self._append("**")
+        elif tag in ("em", "i"):
+            self._append("_")
+        elif tag == "table":
+            self._append("\n\n[Table]\n")
+        elif tag == "tr":
+            self._append("\n")
+        elif tag in ("th", "td"):
+            self._append(" | ")
+
+    def handle_endtag(self, tag):
+        tag = tag.lower()
+
+        if tag in ("script", "style"):
+            if self.skip_depth:
+                self.skip_depth -= 1
+            return
+
+        if tag == "title":
+            self.capture_title = False
+            title = "".join(self.title_buffer).strip()
+            if title:
+                self.title = title
+            return
+
+        if self.skip_depth:
+            return
+
+        if tag == "a":
+            text = " ".join(self.link_text).strip()
+            href = (self.link_href or "").strip()
+            if href.startswith("//"):
+                href = f"https:{href}"
+            if text:
+                if href:
+                    self._append(f"[{text}]({href})", ensure_space=True)
+                else:
+                    self._append(text, ensure_space=True)
+            elif href:
+                self._append(href, ensure_space=True)
+            self.link_href = None
+            self.link_text = []
+        elif tag in ("ul", "ol"):
+            if self.list_stack:
+                self.list_stack.pop()
+            self._append("\n")
+        elif tag == "pre":
+            if self.in_pre:
+                self._append("\n```\n")
+            self.in_pre = False
+        elif tag == "code":
+            if not self.in_pre and self.in_code:
+                self._append("`")
+                self.in_code = False
+        elif tag in ("strong", "b"):
+            self._append("**")
+        elif tag in ("em", "i"):
+            self._append("_")
+        elif tag == "blockquote":
+            self._append("\n")
 
     def handle_data(self, data):
-        clean = data.strip()
-        if clean:
-            self.text.append(clean)
+        if self.capture_title:
+            self.title_buffer.append(data)
+            return
 
-    def get_text(self):
-        return "\n".join(self.text)
+        if self.skip_depth:
+            return
+
+        text = data if self.in_pre else " ".join(html.unescape(data).split())
+        if not text:
+            return
+
+        if self.link_href is not None:
+            self.link_text.append(text)
+        else:
+            self._append(text, ensure_space=True)
+
+    def get_text(self) -> str:
+        raw = "".join(self.parts)
+        lines = raw.splitlines()
+        cleaned = []
+        blank_count = 0
+        for line in lines:
+            if line.strip():
+                cleaned.append(line.rstrip())
+                blank_count = 0
+            else:
+                blank_count += 1
+                if blank_count < 2:
+                    cleaned.append("")
+        return "\n".join(cleaned).strip()
 
 
 # --- Actual Functions ---
@@ -114,24 +291,38 @@ def search_files(path: str, pattern: str) -> str:
 
 
 def fetch_url(url: str) -> str:
-    """Fetches text content from a URL (stripped HTML)."""
+    """Fetches and summarizes text content from a URL."""
+    normalized = url.strip()
+    if not normalized:
+        return "Error: URL is empty."
+    if not normalized.startswith(("http://", "https://")):
+        normalized = f"https://{normalized}"
+
     try:
         headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
-        req = urllib.request.Request(url, headers=headers)
-        with urllib.request.urlopen(req) as response:
-            html_content = response.read().decode("utf-8", errors="ignore")
-
-        parser = SimpleHTMLParser()
-        parser.feed(html_content)
-        text = parser.get_text()
-
-        # Limit size
-        if len(text) > 10000:
-            text = text[:10000] + "\n... (content truncated)"
-
-        return text
+        req = urllib.request.Request(normalized, headers=headers)
+        with urllib.request.urlopen(req, timeout=30) as response:
+            charset = response.headers.get_content_charset() or "utf-8"
+            html_content = response.read().decode(charset, errors="ignore")
     except Exception as e:
         return f"Error fetching URL: {str(e)}"
+
+    parser = StructuredHTMLParser()
+    parser.feed(html_content)
+    text = parser.get_text()
+
+    if not text:
+        text = "No readable text content found."
+
+    if len(text) > 15000:
+        text = text[:15000] + "\n... (content truncated)"
+
+    if parser.title:
+        header = f"{parser.title}\n{'=' * len(parser.title)}\n\n"
+    else:
+        header = ""
+
+    return f"{header}{text}\n\nSource: {normalized}".strip()
 
 
 # --- Map for Execution ---

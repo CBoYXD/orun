@@ -40,10 +40,21 @@ def cmd_history(limit: int = 10):
     # Reverse to show oldest first (within the recent limit), so newest is at the bottom
     for conv in reversed(conversations):
         messages = db.get_conversation_messages(conv["id"])
+        preview_source = None
+        if messages:
+            for msg in messages:
+                if not msg["role"].startswith("hidden_"):
+                    preview_source = msg["content"]
+                    break
+            if preview_source is None:
+                preview_source = "[hidden context]"
+        else:
+            preview_source = "Empty"
+
         first_msg = (
-            messages[0]["content"][:50] + "..."
-            if messages and len(messages[0]["content"]) > 50
-            else (messages[0]["content"] if messages else "Empty")
+            preview_source[:50] + "..."
+            if len(preview_source) > 50
+            else preview_source
         )
         table.add_row(str(conv["id"]), conv["model"], first_msg)
 

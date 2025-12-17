@@ -1,5 +1,5 @@
+import asyncio
 import json
-import os
 
 import ollama
 from rich.markdown import Markdown
@@ -12,6 +12,19 @@ from textual.widgets import Footer, Header, Input, Static
 
 from orun import db, prompts_manager, tools
 from orun.yolo import yolo_mode
+
+SEARCH_ANALYSIS_PROMPT_NAME = "search_analysis"
+HIDDEN_ROLE_MAP = {"hidden_user": "user"}
+HIDDEN_ROLES = set(HIDDEN_ROLE_MAP.keys())
+DEFAULT_SEARCH_ANALYSIS_PROMPT = (
+    "You are Orun's search analyst. Given the fetched document, produce a concise yet"
+    " detailed analysis:\n"
+    "- Start with a short overview mentioning the source.\n"
+    "- List the most important facts or claims.\n"
+    "- Highlight potential risks, opportunities, and recommended next steps.\n"
+    "- Call out gaps or uncertainties if the content is limited.\n"
+    "Keep the tone analytical and practical."
+)
 
 
 class ChatMessage(Static):
@@ -76,7 +89,14 @@ class ChatScreen(Screen):
             yolo_mode.yolo_active = True
 
         self.messages = []
+        self.command_hint_shown = False
         self.history_loaded = False
+        self.command_hint_widget = None
+
+        self.search_analysis_prompt = (
+            prompts_manager.get_prompt(SEARCH_ANALYSIS_PROMPT_NAME)
+            or DEFAULT_SEARCH_ANALYSIS_PROMPT
+        )
 
         if self.conversation_id:
             # Defer loading until mount so we can add widgets
@@ -87,7 +107,7 @@ class ChatScreen(Screen):
     def compose(self) -> ComposeResult:
         yield Header()
         yield VerticalScroll(id="chat_container")
-        yield Input(placeholder="Type a message... ('/.' for commands)", id="chat_input")
+        yield Input(placeholder="Type a message... ('/' for commands)", id="chat_input")
         yield Footer()
 
     def on_mount(self) -> None:
@@ -105,8 +125,12 @@ class ChatScreen(Screen):
                     )
                 )
                 for msg in history:
-                    self.mount_message(msg["role"], msg["content"])
-                    self.messages.append(msg)
+                    stored_role = msg["role"]
+                    content = msg["content"]
+                    effective_role = HIDDEN_ROLE_MAP.get(stored_role, stored_role)
+                    if stored_role not in HIDDEN_ROLES:
+                        self.mount_message(stored_role, content)
+                    self.messages.append({"role": effective_role, "content": content})
             self.history_loaded = True
 
         self.input_widget.focus()
@@ -165,18 +189,27 @@ class ChatScreen(Screen):
     def get_command_entries(self) -> list[tuple[str, str]]:
         """Available slash commands and their descriptions."""
         return [
-            ("/.", "Show available commands"),
-            ("/clear", "Start a fresh conversation"),
-            ("/model [alias]", "Show or switch model (starts fresh convo on change)"),
+            ("/run <cmd>", "Run a shell command"),
+            ("/search <url>", "Fetch and summarize a web page"),
+            ("/prompt [name]", "List or preview prompt templates"),
+            ("/strategy [name]", "List or preview strategy templates"),
+            ("/model [alias]", "Show or switch the active model"),
             ("/reload", "Reload model list from Ollama"),
-            ("/run <cmd>", "Run a shell command (respecting whitelist/YOLO)"),
         ]
+
+    def hide_command_list(self) -> None:
+        if self.command_hint_widget and self.command_hint_widget.parent:
+            self.command_hint_widget.remove()
+        self.command_hint_widget = None
+        self.command_hint_shown = False
 
     def show_command_list(self) -> None:
         lines = ["[cyan]Commands:[/cyan]"]
         for name, desc in self.get_command_entries():
             lines.append(f"  [green]{name}[/green] - {desc}")
-        self.chat_container.mount(Static("\n".join(lines), classes="status"))
+        self.hide_command_list()
+        self.command_hint_widget = Static("\n".join(lines), classes="status")
+        self.chat_container.mount(self.command_hint_widget)
         self.chat_container.scroll_end()
 
     def action_toggle_yolo(self) -> None:
@@ -203,19 +236,33 @@ class ChatScreen(Screen):
             Static("[green]🧹 Conversation cleared.[/]", classes="status")
         )
 
+    def on_input_changed(self, event: Input.Changed) -> None:
+        if event.input.id != "chat_input":
+            return
+
+        value = event.value.strip()
+        if value == "/":
+            if not self.command_hint_shown:
+                self.show_command_list()
+                self.command_hint_shown = True
+        else:
+            self.hide_command_list()
+
     async def on_input_submitted(self, event: Input.Submitted) -> None:
         user_input = event.value.strip()
         if not user_input:
             return
 
+        self.hide_command_list()
         self.input_widget.value = ""
         self.input_widget.disabled = True  # Disable input while processing
 
         # Handle Local Commands
         if user_input.startswith("/"):
-            await self.handle_slash_command(user_input)
-            self.input_widget.disabled = False
-            self.input_widget.focus()
+            wait_for_ai = await self.handle_slash_command(user_input)
+            if not wait_for_ai:
+                self.input_widget.disabled = False
+                self.input_widget.focus()
             return
 
         # Show User Message
@@ -226,28 +273,193 @@ class ChatScreen(Screen):
         # Start AI Processing
         self.process_ollama_turn()
 
-    async def handle_slash_command(self, text: str) -> None:
+    async def handle_slash_command(self, text: str) -> bool:
         parts = text.split(maxsplit=1)
         cmd = parts[0].lower()
         arg = parts[1] if len(parts) > 1 else ""
+        trigger_model = False
 
         if cmd == "/yolo":
             self.action_toggle_yolo()
         elif cmd == "/clear":
             self.action_clear_screen()
         elif cmd == "/run":
+            if not arg:
+                self.chat_container.mount(
+                    Static("[yellow]Usage: /run <command>[/]", classes="status")
+                )
+            else:
+                self.chat_container.mount(
+                    Static(f"[cyan]💻 Executing: {arg}[/]", classes="status")
+                )
+                self.chat_container.scroll_end()
+                result = await asyncio.to_thread(tools.run_shell_command, arg)
+                self.chat_container.mount(
+                    Static(result or "[dim](no output)[/]", classes="status")
+                )
+        elif cmd == "/search":
+            if not arg:
+                self.chat_container.mount(
+                    Static("[yellow]Usage: /search <url>[/]", classes="status")
+                )
+            else:
+                url = arg.strip()
+                if not url.startswith(("http://", "https://")):
+                    url = f"https://{url}"
+                self.chat_container.mount(
+                    Static(f"[cyan]Fetching {url} ...[/]", classes="status")
+                )
+                self.chat_container.scroll_end()
+                result = await asyncio.to_thread(tools.fetch_url, url)
+                result_trimmed = result.strip()
+                if result_trimmed.lower().startswith("error"):
+                    self.chat_container.mount(
+                        Static(result_trimmed, classes="status")
+                    )
+                else:
+                    self.chat_container.mount(
+                        Static("[cyan]Content fetched. Asking AI to analyze...[/]", classes="status")
+                    )
+                    analysis_payload = (
+                        f"{self.search_analysis_prompt}\n\n"
+                        f"Source URL: {url}\n\n"
+                        "-----BEGIN DOCUMENT-----\n"
+                        f"{result_trimmed}\n"
+                        "-----END DOCUMENT-----"
+                    )
+                    self.messages.append({"role": "user", "content": analysis_payload})
+                    db.add_message(
+                        self.conversation_id, "hidden_user", analysis_payload
+                    )
+                    trigger_model = True
+                    self.process_ollama_turn()
+        elif cmd == "/prompt":
+            prompts = await asyncio.to_thread(prompts_manager.list_prompts)
+            if not arg:
+                if not prompts:
+                    self.chat_container.mount(
+                        Static("[yellow]No prompts found.[/]", classes="status")
+                    )
+                else:
+                    lines = ["[cyan]Available Prompts:[/cyan]"]
+                    preview = prompts[:25]
+                    for name in preview:
+                        lines.append(f"  [green]{name}[/green]")
+                    if len(prompts) > len(preview):
+                        lines.append(f"... ({len(prompts) - len(preview)} more)")
+                    self.chat_container.mount(Static("\n".join(lines), classes="status"))
+            else:
+                content = await asyncio.to_thread(prompts_manager.get_prompt, arg)
+                if not content:
+                    self.chat_container.mount(
+                        Static(
+                            f"[yellow]Prompt '{arg}' not found.[/]",
+                            classes="status",
+                        )
+                    )
+                else:
+                    preview = (
+                        content if len(content) <= 1200 else content[:1200] + "\n..."
+                    )
+                    self.chat_container.mount(
+                        Static(
+                            f"[cyan]Prompt: {arg}[/]\n{preview}",
+                            classes="status",
+                        )
+                    )
+        elif cmd == "/strategy":
+            strategies = await asyncio.to_thread(prompts_manager.list_strategies)
+            if not arg:
+                if not strategies:
+                    self.chat_container.mount(
+                        Static("[yellow]No strategies found.[/]", classes="status")
+                    )
+                else:
+                    lines = ["[cyan]Available Strategies:[/cyan]"]
+                    preview = strategies[:25]
+                    for name in preview:
+                        lines.append(f"  [green]{name}[/green]")
+                    if len(strategies) > len(preview):
+                        lines.append(
+                            f"... ({len(strategies) - len(preview)} more)"
+                        )
+                    self.chat_container.mount(Static("\n".join(lines), classes="status"))
+            else:
+                content = await asyncio.to_thread(prompts_manager.get_strategy, arg)
+                if not content:
+                    self.chat_container.mount(
+                        Static(
+                            f"[yellow]Strategy '{arg}' not found.[/]",
+                            classes="status",
+                        )
+                    )
+                else:
+                    preview = (
+                        content if len(content) <= 1200 else content[:1200] + "\n..."
+                    )
+                    self.chat_container.mount(
+                        Static(
+                            f"[cyan]Strategy: {arg}[/]\n{preview}",
+                            classes="status",
+                        )
+                    )
+        elif cmd == "/model":
+            if not arg:
+                models = await asyncio.to_thread(db.get_models)
+                active = await asyncio.to_thread(db.get_active_model)
+                if not models:
+                    self.chat_container.mount(
+                        Static(
+                            "[yellow]No models found. Use /reload to sync from Ollama.[/]",
+                            classes="status",
+                        )
+                    )
+                else:
+                    lines = ["[cyan]Available Models:[/cyan]"]
+                    for alias, name in sorted(models.items()):
+                        marker = " [green](active)[/]" if name == active else ""
+                        lines.append(f"  [green]{alias}[/green] -> {name}{marker}")
+                    self.chat_container.mount(Static("\n".join(lines), classes="status"))
+            else:
+                switched = await asyncio.to_thread(db.set_active_model, arg)
+                if not switched:
+                    self.chat_container.mount(
+                        Static(f"[red]Model '{arg}' not found.[/]", classes="status")
+                    )
+                else:
+                    new_model = await asyncio.to_thread(db.get_active_model)
+                    self.model_name = new_model or arg
+                    self.title = f"Orun - {self.model_name}"
+                    self.messages = []
+                    self.conversation_id = db.create_conversation(self.model_name)
+                    self.chat_container.remove_children()
+                    self.chat_container.mount(
+                        Static(
+                            f"[green]Switched to {self.model_name}. Started a new conversation.[/]",
+                            classes="status",
+                        )
+                    )
+        elif cmd == "/reload":
             self.chat_container.mount(
-                Static(f"[cyan]💻 Executing: {arg}[/]", classes="status")
+                Static("[cyan]Reloading models from Ollama...[/]", classes="status")
             )
             self.chat_container.scroll_end()
-            result = tools.run_shell_command(arg)
-            self.chat_container.mount(Static(result, classes="status"))
+            try:
+                await asyncio.to_thread(db.refresh_ollama_models)
+                self.chat_container.mount(
+                    Static("[green]Model list reloaded.[/]", classes="status")
+                )
+            except Exception as exc:
+                self.chat_container.mount(
+                    Static(f"[red]Reload failed: {exc}[/]", classes="status")
+                )
         else:
             self.chat_container.mount(
                 Static(f"[yellow]Unknown command: {cmd}[/]", classes="status")
             )
 
         self.chat_container.scroll_end()
+        return trigger_model
 
     @work(exclusive=True, thread=True)
     def process_ollama_turn(self) -> None:
