@@ -1,4 +1,5 @@
 import json
+import os
 
 import ollama
 from rich.markdown import Markdown
@@ -48,7 +49,6 @@ class ChatMessage(Static):
 
 class ChatScreen(Screen):
     BINDINGS = [
-        Binding("ctrl+y", "toggle_yolo", "Toggle YOLO"),
         Binding("ctrl+l", "clear_screen", "Clear"),
     ]
 
@@ -87,7 +87,7 @@ class ChatScreen(Screen):
     def compose(self) -> ComposeResult:
         yield Header()
         yield VerticalScroll(id="chat_container")
-        yield Input(placeholder="Type a message... (Ctrl+Y for YOLO)", id="chat_input")
+        yield Input(placeholder="Type a message... ('/.' for commands)", id="chat_input")
         yield Footer()
 
     def on_mount(self) -> None:
@@ -161,6 +161,23 @@ class ChatScreen(Screen):
         self.chat_container.mount(msg_widget)
         msg_widget.scroll_visible()
         return msg_widget
+
+    def get_command_entries(self) -> list[tuple[str, str]]:
+        """Available slash commands and their descriptions."""
+        return [
+            ("/.", "Show available commands"),
+            ("/clear", "Start a fresh conversation"),
+            ("/model [alias]", "Show or switch model (starts fresh convo on change)"),
+            ("/reload", "Reload model list from Ollama"),
+            ("/run <cmd>", "Run a shell command (respecting whitelist/YOLO)"),
+        ]
+
+    def show_command_list(self) -> None:
+        lines = ["[cyan]Commands:[/cyan]"]
+        for name, desc in self.get_command_entries():
+            lines.append(f"  [green]{name}[/green] - {desc}")
+        self.chat_container.mount(Static("\n".join(lines), classes="status"))
+        self.chat_container.scroll_end()
 
     def action_toggle_yolo(self) -> None:
         yolo_mode.toggle(show_message=False)
