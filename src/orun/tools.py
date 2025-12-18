@@ -3,6 +3,8 @@ import os
 import subprocess
 import urllib.request
 from html.parser import HTMLParser
+import arxiv
+
 
 # --- Helper for HTML Parsing ---
 
@@ -325,6 +327,104 @@ def fetch_url(url: str) -> str:
     return f"{header}{text}\n\nSource: {normalized}".strip()
 
 
+def search_arxiv(query: str, max_results: int = 5) -> str:
+    """Search for papers on arXiv by query string."""
+    if arxiv is None:
+        return "Error: arxiv library is not installed. Run 'uv sync' to install dependencies."
+
+    try:
+        max_results = min(int(max_results), 20)  # Limit to max 20 results
+    except (ValueError, TypeError):
+        max_results = 5
+
+    try:
+        search = arxiv.Search(
+            query=query,
+            max_results=max_results,
+            sort_by=arxiv.SortCriterion.SubmittedDate,
+        )
+
+        results = []
+        for i, paper in enumerate(search.results(), 1):
+            authors = ", ".join([author.name for author in paper.authors[:3]])
+            if len(paper.authors) > 3:
+                authors += " et al."
+
+            result = f"{i}. **{paper.title}**\n"
+            result += f"   Authors: {authors}\n"
+            result += f"   Published: {paper.published.strftime('%Y-%m-%d')}\n"
+            result += f"   arXiv ID: {paper.entry_id.split('/')[-1]}\n"
+            result += f"   PDF: {paper.pdf_url}\n"
+            # Truncate abstract if too long
+            abstract = paper.summary.replace("\n", " ").strip()
+            if len(abstract) > 300:
+                abstract = abstract[:300] + "..."
+            result += f"   Abstract: {abstract}\n"
+
+            results.append(result)
+
+        if not results:
+            return f"No papers found for query: {query}"
+
+        header = f"Found {len(results)} paper(s) for '{query}':\n\n"
+        return header + "\n".join(results)
+
+    except Exception as e:
+        return f"Error searching arXiv: {str(e)}"
+
+
+def get_arxiv_paper(arxiv_id: str) -> str:
+    """Get detailed information about a specific arXiv paper by its ID."""
+    if arxiv is None:
+        return "Error: arxiv library is not installed. Run 'uv sync' to install dependencies."
+
+    try:
+        # Clean up the arxiv_id (remove version number if present)
+        arxiv_id = arxiv_id.strip().replace("https://arxiv.org/abs/", "").replace("http://arxiv.org/abs/", "")
+        if "v" in arxiv_id:
+            arxiv_id = arxiv_id.split("v")[0]
+
+        search = arxiv.Search(id_list=[arxiv_id])
+        paper = next(search.results())
+
+        # Format authors
+        authors = ", ".join([author.name for author in paper.authors])
+
+        # Format categories
+        categories = ", ".join(paper.categories)
+
+        # Build detailed output
+        output = f"**{paper.title}**\n\n"
+        output += f"Authors: {authors}\n\n"
+        output += f"Published: {paper.published.strftime('%Y-%m-%d')}\n"
+        if paper.updated != paper.published:
+            output += f"Updated: {paper.updated.strftime('%Y-%m-%d')}\n"
+        output += f"\nCategories: {categories}\n"
+        output += f"arXiv ID: {paper.entry_id.split('/')[-1]}\n"
+        output += f"PDF: {paper.pdf_url}\n"
+
+        if paper.doi:
+            output += f"DOI: {paper.doi}\n"
+
+        if paper.journal_ref:
+            output += f"Journal Reference: {paper.journal_ref}\n"
+
+        if paper.comment:
+            output += f"\nComment: {paper.comment}\n"
+
+        output += f"\n**Abstract:**\n{paper.summary}\n"
+
+        if paper.primary_category:
+            output += f"\nPrimary Category: {paper.primary_category}\n"
+
+        return output.strip()
+
+    except StopIteration:
+        return f"Error: Paper with arXiv ID '{arxiv_id}' not found."
+    except Exception as e:
+        return f"Error fetching arXiv paper: {str(e)}"
+
+
 # --- Map for Execution ---
 
 AVAILABLE_TOOLS = {
@@ -334,6 +434,8 @@ AVAILABLE_TOOLS = {
     "list_directory": list_directory,
     "search_files": search_files,
     "fetch_url": fetch_url,
+    "search_arxiv": search_arxiv,
+    "get_arxiv_paper": get_arxiv_paper,
 }
 
 # --- Schemas for Ollama ---
@@ -443,6 +545,44 @@ TOOL_DEFINITIONS = [
                     "url": {"type": "string", "description": "The URL to fetch"},
                 },
                 "required": ["url"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "search_arxiv",
+            "description": "Search for academic papers on arXiv by query. Returns title, authors, abstract, and PDF link.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "Search query (e.g., 'quantum computing', 'neural networks', or author name)",
+                    },
+                    "max_results": {
+                        "type": "integer",
+                        "description": "Maximum number of results to return (default: 5, max: 20)",
+                    },
+                },
+                "required": ["query"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_arxiv_paper",
+            "description": "Get detailed information about a specific arXiv paper by its ID (e.g., '2301.07041').",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "arxiv_id": {
+                        "type": "string",
+                        "description": "The arXiv ID of the paper (e.g., '2301.07041' or full URL)",
+                    },
+                },
+                "required": ["arxiv_id"],
             },
         },
     },

@@ -122,7 +122,50 @@ Tools are enabled by default for all chat/query modes. The AI can:
 - `list_directory`, `search_files`
 - `run_shell_command`
 - `fetch_url`
+- `search_arxiv`, `get_arxiv_paper` - Search and retrieve academic papers from arXiv
 User confirmation is required for execution.
+
+### arXiv Integration
+The AI can search and retrieve academic papers from arXiv using two methods:
+
+#### 1. Agent Tools (Automatic)
+**search_arxiv(query, max_results=5)**
+- Search for papers by keywords, topics, or author names
+- Returns title, authors, publication date, abstract preview, and PDF link
+- Max results: 20 papers per search
+- Example: `"Find papers about transformer architectures"`
+
+**get_arxiv_paper(arxiv_id)**
+- Get detailed information about a specific paper by its arXiv ID
+- Returns full abstract, all authors, categories, DOI, journal reference
+- Accepts arXiv ID (e.g., "1706.03762") or full URL
+- Example: `"Get details for paper 1706.03762"`
+
+#### 2. TUI Command (Interactive Chat)
+In interactive chat mode, use the `/arxiv` command:
+
+```bash
+# Search for papers by query
+/arxiv transformer neural networks
+
+# Get specific paper by ID
+/arxiv 1706.03762
+
+# Get paper by URL
+/arxiv https://arxiv.org/abs/2301.07041
+```
+
+The `/arxiv` command automatically:
+- Detects if input is a search query or paper ID
+- Fetches paper information from arXiv
+- Sends data to AI for analysis (without showing raw output)
+- AI provides a comprehensive summary with insights
+
+These tools allow the AI to:
+- Research recent publications in any field
+- Summarize and analyze academic papers
+- Find relevant literature for your projects
+- Stay updated with the latest research
 
 ## YOLO Mode (No Confirmations)
 

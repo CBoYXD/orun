@@ -5,6 +5,7 @@ A Python CLI Agent wrapper for Ollama. It combines chat capabilities with autono
 ## Features
 
 - **Autonomous Agent:** Can read/write files, run shell commands, and fetch URLs (with user confirmation).
+- **arXiv Integration:** Search and retrieve academic papers directly from arXiv.
 - **Screenshot Analysis:** Auto-detects and attaches recent screenshots from your Pictures folder.
 - **Prompt Templates:** 200+ pre-defined templates for coding, analysis, writing, and more.
 - **Strategy Templates:** Chain-of-Thought, Tree-of-Thought, and other reasoning strategies.
@@ -76,6 +77,30 @@ Attach the last 3 screenshots:
 ```bash
 orun "Compare these images" -i 3x
 ```
+
+### arXiv Integration
+Search for academic papers and let the AI analyze them:
+```bash
+orun "Find recent papers about transformers in NLP"
+orun "Get details about arXiv paper 1706.03762"
+orun "Search for papers by Geoffrey Hinton and summarize his latest work"
+```
+
+In interactive chat, use the `/arxiv` command for direct access:
+```bash
+orun chat
+> /arxiv quantum computing
+> /arxiv 1706.03762
+> /arxiv https://arxiv.org/abs/2301.07041
+```
+
+The AI can autonomously:
+- Search arXiv by keywords, topics, or authors
+- Retrieve full paper details (title, abstract, authors, PDF links)
+- Analyze and summarize research papers
+- Find relevant literature for your projects
+
+The `/arxiv` command automatically detects whether you're searching or requesting a specific paper, fetches the data, and provides AI analysis without showing raw output.
 
 ### Model Management
 Sync models from Ollama:

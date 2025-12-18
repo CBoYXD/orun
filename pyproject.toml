@@ -9,6 +9,7 @@ dependencies = [
     "peewee>=3.18",
     "rich>=14.2.0",
     "textual>=0.70.0",
+    "arxiv>=2.3.1",
 ]
 
 [project.scripts]

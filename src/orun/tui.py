@@ -14,6 +14,7 @@ from orun import db, prompts_manager, tools
 from orun.yolo import yolo_mode
 
 SEARCH_ANALYSIS_PROMPT_NAME = "search_analysis"
+ARXIV_ANALYSIS_PROMPT_NAME = "arxiv_analysis"
 HIDDEN_ROLE_MAP = {"hidden_user": "user"}
 HIDDEN_ROLES = set(HIDDEN_ROLE_MAP.keys())
 LIST_PAGE_SIZE = 25
@@ -25,6 +26,15 @@ DEFAULT_SEARCH_ANALYSIS_PROMPT = (
     "- Highlight potential risks, opportunities, and recommended next steps.\n"
     "- Call out gaps or uncertainties if the content is limited.\n"
     "Keep the tone analytical and practical."
+)
+DEFAULT_ARXIV_ANALYSIS_PROMPT = (
+    "You are Orun's research paper analyst. Given the arXiv paper information, provide a comprehensive analysis:\n"
+    "- Start with a brief overview of the paper's main contribution.\n"
+    "- Summarize the key findings and methodology.\n"
+    "- Highlight the significance and potential applications.\n"
+    "- Identify limitations or areas for future work if mentioned.\n"
+    "- Suggest related topics or follow-up questions.\n"
+    "Keep the analysis accessible yet technically accurate."
 )
 
 
@@ -105,6 +115,10 @@ class ChatScreen(Screen):
         self.search_analysis_prompt = (
             prompts_manager.get_prompt(SEARCH_ANALYSIS_PROMPT_NAME)
             or DEFAULT_SEARCH_ANALYSIS_PROMPT
+        )
+        self.arxiv_analysis_prompt = (
+            prompts_manager.get_prompt(ARXIV_ANALYSIS_PROMPT_NAME)
+            or DEFAULT_ARXIV_ANALYSIS_PROMPT
         )
 
         if self.conversation_id:
@@ -334,6 +348,7 @@ class ChatScreen(Screen):
         return [
             ("/run <cmd>", "Run a shell command"),
             ("/search <url>", "Fetch and summarize a web page"),
+            ("/arxiv <query|id>", "Search arXiv or get paper details"),
             ("/prompt <name...>", "Activate prompt templates"),
             ("/prompt remove <name>", "Remove a prompt template"),
             ("/prompts [page|active]", "List available/active prompt templates"),
@@ -485,6 +500,53 @@ class ChatScreen(Screen):
                         "-----BEGIN DOCUMENT-----\n"
                         f"{result_trimmed}\n"
                         "-----END DOCUMENT-----"
+                    )
+                    self.messages.append({"role": "user", "content": analysis_payload})
+                    db.add_message(
+                        self.conversation_id, "hidden_user", analysis_payload
+                    )
+                    trigger_model = True
+                    self.process_ollama_turn()
+        elif cmd == "/arxiv":
+            if not arg:
+                self.chat_container.mount(
+                    Static("[yellow]Usage: /arxiv <query or arxiv_id>[/]", classes="status")
+                )
+            else:
+                query = arg.strip()
+                # Check if it looks like an arXiv ID (digits, dots, optional v)
+                is_id = bool(query.replace(".", "").replace("v", "").replace("/", "").isdigit())
+
+                if is_id or "arxiv.org" in query.lower():
+                    # Get specific paper
+                    self.chat_container.mount(
+                        Static(f"[cyan]Fetching arXiv paper {query}...[/]", classes="status")
+                    )
+                    self.chat_container.scroll_end()
+                    result = await asyncio.to_thread(tools.get_arxiv_paper, query)
+                else:
+                    # Search for papers
+                    self.chat_container.mount(
+                        Static(f"[cyan]Searching arXiv for '{query}'...[/]", classes="status")
+                    )
+                    self.chat_container.scroll_end()
+                    result = await asyncio.to_thread(tools.search_arxiv, query, 5)
+
+                result_trimmed = result.strip()
+                if result_trimmed.lower().startswith("error"):
+                    self.chat_container.mount(
+                        Static(result_trimmed, classes="status")
+                    )
+                else:
+                    self.chat_container.mount(
+                        Static("[cyan]Paper(s) fetched. Asking AI to analyze...[/]", classes="status")
+                    )
+                    analysis_payload = (
+                        f"{self.arxiv_analysis_prompt}\n\n"
+                        f"Query: {query}\n\n"
+                        "-----BEGIN ARXIV DATA-----\n"
+                        f"{result_trimmed}\n"
+                        "-----END ARXIV DATA-----"
                     )
                     self.messages.append({"role": "user", "content": analysis_payload})
                     db.add_message(
