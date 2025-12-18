@@ -10,7 +10,7 @@ from pathlib import Path
 import ollama
 from PIL import Image, ImageGrab
 
-from .rich_utils import Colors, console, print_error, print_info, print_warning
+from orun.rich_utils import Colors, console, print_error, print_info, print_warning
 
 
 def ensure_ollama_running():

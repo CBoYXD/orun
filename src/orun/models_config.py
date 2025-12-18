@@ -4,8 +4,7 @@ from typing import Dict, Optional
 
 import ollama
 
-from orun.rich_utils import console
-from orun.utils import Colors, print_error, print_success
+from orun.rich_utils import Colors, console, print_error, print_success
 
 
 class ModelsConfig:

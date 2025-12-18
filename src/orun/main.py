@@ -4,9 +4,8 @@ import sys
 
 from orun import commands, consensus, core, db, utils
 from orun.models_config import models_config
-from orun.rich_utils import console
+from orun.rich_utils import Colors, console, print_warning
 from orun.tui import OrunApp
-from orun.utils import Colors, print_warning
 
 
 @utils.handle_cli_errors

@@ -2,9 +2,7 @@ import json
 from pathlib import Path
 from typing import Dict, List, Optional
 
-from orun.rich_utils import console
-
-from .utils import Colors
+from orun.rich_utils import Colors, console
 
 
 class ConsensusConfig:

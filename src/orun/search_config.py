@@ -1,9 +1,7 @@
 import json
 from pathlib import Path
 
-from orun.rich_utils import console
-
-from .utils import Colors
+from orun.rich_utils import Colors, console
 
 
 class SearchConfig:

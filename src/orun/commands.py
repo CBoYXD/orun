@@ -1,9 +1,15 @@
 from orun import core, db, prompts_manager, tools
 from orun.consensus_config import consensus_config
 from orun.models_config import models_config
-from orun.rich_utils import console, create_table, print_table
+from orun.rich_utils import (
+    Colors,
+    console,
+    create_table,
+    print_error,
+    print_success,
+    print_table,
+)
 from orun.tui import OrunApp
-from orun.utils import Colors, print_error, print_success
 
 
 def cmd_models():

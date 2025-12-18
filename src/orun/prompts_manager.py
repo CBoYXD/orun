@@ -3,7 +3,7 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
-from orun.utils import print_error
+from orun.rich_utils import print_error
 
 
 def _candidate_data_dirs() -> list[Path]:

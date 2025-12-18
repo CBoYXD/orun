@@ -14,8 +14,7 @@ from orun import db, tools, utils
 from orun.consensus_config import consensus_config
 from orun.core import execute_tool_calls, handle_ollama_stream
 from orun.models_config import models_config
-from orun.rich_utils import console
-from orun.utils import Colors, print_error
+from orun.rich_utils import Colors, console, print_error
 
 
 def run_consensus(

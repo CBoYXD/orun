@@ -11,8 +11,7 @@ from peewee import (
     fn,
 )
 
-from orun.rich_utils import console
-from orun.utils import Colors, print_error
+from orun.rich_utils import Colors, console, print_error
 
 DB_DIR = Path.home() / ".orun"
 DB_PATH = DB_DIR / "history.db"

@@ -4,8 +4,7 @@ from pathlib import Path
 import ollama
 
 from orun import db, prompts_manager, tools, utils
-from orun.rich_utils import console
-from orun.utils import Colors, print_error, print_warning
+from orun.rich_utils import Colors, console, print_error, print_warning
 from orun.yolo import yolo_mode
 
 
