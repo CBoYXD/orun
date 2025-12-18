@@ -139,39 +139,55 @@ def list_strategies() -> list[str]:
 
 def compose_prompt(
     user_prompt: str,
-    prompt_template: str | None = None,
-    strategy_template: str | None = None,
+    prompt_template: str | list[str] | None = None,
+    strategy_template: str | list[str] | None = None,
 ) -> PromptBuild:
     """Combine user text with selected prompt/strategy templates."""
     parts: list[str] = []
     missing: list[str] = []
-    applied_prompt: str | None = None
-    applied_strategy: str | None = None
+    applied_prompts: list[str] = []
+    applied_strategies: list[str] = []
 
+    # Handle prompt templates (single or multiple)
+    prompt_templates = []
     if prompt_template:
-        prompt_text = get_prompt(prompt_template)
+        if isinstance(prompt_template, str):
+            prompt_templates = [prompt_template]
+        else:
+            prompt_templates = prompt_template
+
+    for template in prompt_templates:
+        prompt_text = get_prompt(template)
         if prompt_text:
             parts.append(prompt_text.strip())
-            applied_prompt = prompt_template
+            applied_prompts.append(template)
         else:
-            missing.append(f"prompt '{prompt_template}'")
+            missing.append(f"prompt '{template}'")
 
     if user_prompt:
         parts.append(user_prompt.strip())
 
+    # Handle strategy templates (single or multiple)
+    strategy_templates = []
     if strategy_template:
-        strategy_text = get_strategy(strategy_template)
+        if isinstance(strategy_template, str):
+            strategy_templates = [strategy_template]
+        else:
+            strategy_templates = strategy_template
+
+    for template in strategy_templates:
+        strategy_text = get_strategy(template)
         if strategy_text:
             parts.append(strategy_text.strip())
-            applied_strategy = strategy_template
+            applied_strategies.append(template)
         else:
-            missing.append(f"strategy '{strategy_template}'")
+            missing.append(f"strategy '{template}'")
 
     full_text = "\n\n".join(part for part in parts if part)
 
     return PromptBuild(
         text=full_text,
-        applied_prompt=applied_prompt,
-        applied_strategy=applied_strategy,
+        applied_prompt=", ".join(applied_prompts) if applied_prompts else None,
+        applied_strategy=", ".join(applied_strategies) if applied_strategies else None,
         missing=missing,
     )

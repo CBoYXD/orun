@@ -290,10 +290,10 @@ def main():
         "--dir", type=str, help="Directory to scan and include as context (recursive)"
     )
     parser.add_argument(
-        "-p", "--prompt", dest="use_prompt", help="Use a specific prompt template"
+        "-p", "--prompt", dest="use_prompt", action="append", help="Use prompt template(s) (can be used multiple times)"
     )
     parser.add_argument(
-        "-s", "--strategy", dest="use_strategy", help="Use a specific strategy template"
+        "-s", "--strategy", dest="use_strategy", action="append", help="Use strategy template(s) (can be used multiple times)"
     )
     parser.add_argument(
         "-o", "--output", type=str, help="Save output to file instead of printing to console"
