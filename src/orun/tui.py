@@ -96,6 +96,11 @@ class ChatScreen(Screen):
         self.template_list_state = None
         self.template_list_widget = None
         self.pending_images = []
+        self.pending_files = []
+        self.pending_dir_context = None
+        self.pending_clipboard_text = None
+        self.system_prompt = None
+        self.model_options = {}
 
         self.search_analysis_prompt = prompts_manager.get_prompt(SEARCH_ANALYSIS_PROMPT_NAME)
         self.arxiv_analysis_prompt = prompts_manager.get_prompt(ARXIV_ANALYSIS_PROMPT_NAME)
@@ -265,10 +270,23 @@ class ChatScreen(Screen):
     def build_user_payload(self, user_input: str) -> str:
         prompt_names = self.active_prompt_templates
         strategy_name = self.active_strategy_template
-        if not prompt_names and not strategy_name:
-            return user_input
 
         parts: list[str] = []
+
+        # Add clipboard text if available
+        if self.pending_clipboard_text:
+            parts.append(f"--- Input from clipboard ---\n{self.pending_clipboard_text}")
+
+        # Add directory context if available
+        if self.pending_dir_context:
+            parts.append(self.pending_dir_context)
+
+        # Add file context if available
+        if self.pending_files:
+            file_context = utils.read_file_context(self.pending_files)
+            if file_context:
+                parts.append(file_context)
+
         # Add prompt templates
         for name in prompt_names:
             prompt_text = prompts_manager.get_prompt(name)
@@ -331,6 +349,13 @@ class ChatScreen(Screen):
             ("/arxiv <query|id>", "Search arXiv or get paper details"),
             ("/image [indices]", "Attach screenshots (e.g., '1', '1,2', '3x')"),
             ("/paste", "Paste image from clipboard"),
+            ("/file <paths...>", "Add files as context (supports globs)"),
+            ("/dir <path>", "Scan directory and add as context"),
+            ("/clipboard", "Paste text from clipboard"),
+            ("/system <prompt>", "Set custom system prompt"),
+            ("/temperature <value>", "Set model temperature (0.0-2.0)"),
+            ("/topp <value>", "Set top-p sampling (0.0-1.0)"),
+            ("/export <path>", "Save conversation to file"),
             ("/prompt <name...>", "Activate prompt templates"),
             ("/prompt remove <name>", "Remove a prompt template"),
             ("/prompts [page|active]", "List available/active prompt templates"),
@@ -472,6 +497,11 @@ class ChatScreen(Screen):
         else:
             self.messages.append({"role": "user", "content": payload})
             db.add_message(self.conversation_id, "user", payload)
+
+        # Clear pending context after using
+        self.pending_files = []
+        self.pending_dir_context = None
+        self.pending_clipboard_text = None
 
         # Start AI Processing
         self.process_ollama_turn()
@@ -667,6 +697,180 @@ class ChatScreen(Screen):
                 self.chat_container.mount(
                     Static(f"[red]Error pasting from clipboard: {e}[/]", classes="status")
                 )
+        elif cmd == "/file":
+            # Add files as context (supports glob patterns)
+            if not arg:
+                self.chat_container.mount(
+                    Static("[yellow]Usage: /file <path1> [path2...][/]", classes="status")
+                )
+            else:
+                tokens = arg.split()
+                try:
+                    file_paths = await asyncio.to_thread(utils.parse_file_patterns, tokens)
+                    if file_paths:
+                        self.pending_files.extend(file_paths)
+                        file_names = [f"📄 {os.path.basename(f)}" for f in file_paths]
+                        self.chat_container.mount(
+                            Static(
+                                f"[green]Files added to context ({len(file_paths)}):[/]\n" + "\n".join(file_names),
+                                classes="status"
+                            )
+                        )
+                    else:
+                        self.chat_container.mount(
+                            Static("[yellow]No files found matching the pattern.[/]", classes="status")
+                        )
+                except Exception as e:
+                    self.chat_container.mount(
+                        Static(f"[red]Error loading files: {e}[/]", classes="status")
+                    )
+        elif cmd == "/dir":
+            # Scan directory and add as context
+            if not arg:
+                self.chat_container.mount(
+                    Static("[yellow]Usage: /dir <directory_path>[/]", classes="status")
+                )
+            else:
+                dir_path = arg.strip()
+                try:
+                    self.chat_container.mount(
+                        Static(f"[cyan]Scanning directory: {dir_path}...[/]", classes="status")
+                    )
+                    self.chat_container.scroll_end()
+                    dir_context = await asyncio.to_thread(utils.read_directory_context, dir_path)
+                    if dir_context:
+                        self.pending_dir_context = dir_context
+                        self.chat_container.mount(
+                            Static(
+                                f"[green]Directory context loaded ({len(dir_context)} chars)[/]",
+                                classes="status"
+                            )
+                        )
+                    else:
+                        self.chat_container.mount(
+                            Static("[yellow]No readable files found in directory.[/]", classes="status")
+                        )
+                except Exception as e:
+                    self.chat_container.mount(
+                        Static(f"[red]Error scanning directory: {e}[/]", classes="status")
+                    )
+        elif cmd == "/clipboard":
+            # Paste text from clipboard
+            try:
+                clipboard_text = await asyncio.to_thread(utils.read_clipboard_text)
+                if clipboard_text:
+                    self.pending_clipboard_text = clipboard_text
+                    preview = clipboard_text[:100] + "..." if len(clipboard_text) > 100 else clipboard_text
+                    self.chat_container.mount(
+                        Static(
+                            f"[green]📋 Clipboard text loaded ({len(clipboard_text)} chars)[/]\n[dim]{preview}[/]",
+                            classes="status"
+                        )
+                    )
+                else:
+                    self.chat_container.mount(
+                        Static("[yellow]No text found in clipboard[/]", classes="status")
+                    )
+            except Exception as e:
+                self.chat_container.mount(
+                    Static(f"[red]Error reading clipboard: {e}[/]", classes="status")
+                )
+        elif cmd == "/system":
+            # Set custom system prompt
+            if not arg:
+                if self.system_prompt:
+                    self.chat_container.mount(
+                        Static(f"[cyan]Current system prompt:[/]\n{self.system_prompt}", classes="status")
+                    )
+                else:
+                    self.chat_container.mount(
+                        Static("[yellow]Usage: /system <prompt> | /system clear[/]", classes="status")
+                    )
+            elif arg.strip().lower() == "clear":
+                self.system_prompt = None
+                self.chat_container.mount(
+                    Static("[green]System prompt cleared.[/]", classes="status")
+                )
+            else:
+                self.system_prompt = arg.strip()
+                self.chat_container.mount(
+                    Static(f"[green]System prompt set ({len(self.system_prompt)} chars)[/]", classes="status")
+                )
+        elif cmd == "/temperature":
+            # Set model temperature
+            if not arg:
+                current = self.model_options.get("temperature", "not set")
+                self.chat_container.mount(
+                    Static(f"[cyan]Current temperature: {current}[/]", classes="status")
+                )
+            else:
+                try:
+                    value = float(arg.strip())
+                    if 0.0 <= value <= 2.0:
+                        self.model_options["temperature"] = value
+                        self.chat_container.mount(
+                            Static(f"[green]Temperature set to {value}[/]", classes="status")
+                        )
+                    else:
+                        self.chat_container.mount(
+                            Static("[yellow]Temperature must be between 0.0 and 2.0[/]", classes="status")
+                        )
+                except ValueError:
+                    self.chat_container.mount(
+                        Static("[yellow]Invalid temperature value. Use a number between 0.0 and 2.0[/]", classes="status")
+                    )
+        elif cmd == "/topp":
+            # Set top-p sampling
+            if not arg:
+                current = self.model_options.get("top_p", "not set")
+                self.chat_container.mount(
+                    Static(f"[cyan]Current top-p: {current}[/]", classes="status")
+                )
+            else:
+                try:
+                    value = float(arg.strip())
+                    if 0.0 <= value <= 1.0:
+                        self.model_options["top_p"] = value
+                        self.chat_container.mount(
+                            Static(f"[green]Top-p set to {value}[/]", classes="status")
+                        )
+                    else:
+                        self.chat_container.mount(
+                            Static("[yellow]Top-p must be between 0.0 and 1.0[/]", classes="status")
+                        )
+                except ValueError:
+                    self.chat_container.mount(
+                        Static("[yellow]Invalid top-p value. Use a number between 0.0 and 1.0[/]", classes="status")
+                    )
+        elif cmd == "/export":
+            # Save conversation to file
+            if not arg:
+                self.chat_container.mount(
+                    Static("[yellow]Usage: /export <filepath>[/]", classes="status")
+                )
+            else:
+                filepath = arg.strip()
+                try:
+                    # Export conversation messages
+                    from pathlib import Path
+                    output_path = Path(filepath)
+                    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+                    # Format conversation
+                    lines = [f"# Conversation with {self.model_name}\n"]
+                    for msg in self.messages:
+                        role = msg["role"].upper()
+                        content = msg.get("content", "")
+                        lines.append(f"\n## {role}\n{content}\n")
+
+                    output_path.write_text("\n".join(lines), encoding='utf-8')
+                    self.chat_container.mount(
+                        Static(f"[green]✅ Conversation exported to: {filepath}[/]", classes="status")
+                    )
+                except Exception as e:
+                    self.chat_container.mount(
+                        Static(f"[red]Error exporting conversation: {e}[/]", classes="status")
+                    )
         elif cmd == "/prompt":
             tokens = [tok for tok in arg.split() if tok]
             if not tokens:
@@ -878,6 +1082,14 @@ class ChatScreen(Screen):
         try:
             tool_defs = tools.TOOL_DEFINITIONS if self.use_tools else None
 
+            # Prepare messages with optional system prompt
+            messages = self.messages.copy()
+            if self.system_prompt and (not messages or messages[0].get("role") != "system"):
+                messages.insert(0, {"role": "system", "content": self.system_prompt})
+
+            # Prepare model options
+            options = self.model_options if self.model_options else None
+
             # Step 1: Initial Call (Sync)
             # If using tools, we assume we might get tool calls first (not streamed)
             # OR we can stream and parse? Ollama python lib `stream=True` yields chunks.
@@ -888,9 +1100,10 @@ class ChatScreen(Screen):
             if self.use_tools:
                 response = ollama.chat(
                     model=self.model_name,
-                    messages=self.messages,
+                    messages=messages,
                     tools=tool_defs,
                     stream=False,
+                    options=options
                 )
                 msg = response["message"]
                 self.messages.append(msg)
@@ -958,7 +1171,7 @@ class ChatScreen(Screen):
                                 )
 
                     # After tools, get final response (Streamed)
-                    self.stream_assistant_response()
+                    self.stream_assistant_response(messages=messages, options=options)
                 else:
                     # No tools, just content.
                     # But since we used stream=False, we have the full content already.
@@ -968,7 +1181,7 @@ class ChatScreen(Screen):
 
             else:
                 # No tools, just stream directly
-                self.stream_assistant_response()
+                self.stream_assistant_response(messages=messages, options=options)
 
         except Exception as e:
             self.app.call_from_thread(
@@ -978,14 +1191,16 @@ class ChatScreen(Screen):
         finally:
             self.app.call_from_thread(self.enable_input)
 
-    def stream_assistant_response(self):
+    def stream_assistant_response(self, messages=None, options=None):
         # Create the widget on the main thread
         widget = ChatMessage("assistant", "")
         self.app.call_from_thread(self.chat_container.mount, widget)
         self.app.call_from_thread(widget.scroll_visible)
 
         full_resp = ""
-        stream = ollama.chat(model=self.model_name, messages=self.messages, stream=True)
+        # Use provided messages or default to self.messages
+        msgs = messages if messages is not None else self.messages
+        stream = ollama.chat(model=self.model_name, messages=msgs, stream=True, options=options)
 
         for chunk in stream:
             content = chunk["message"]["content"]
