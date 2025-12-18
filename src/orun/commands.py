@@ -1,4 +1,4 @@
-from orun import db, prompts_manager, tools
+from orun import core, db, prompts_manager, tools
 from orun.rich_utils import console, create_table, print_table
 from orun.search_config import search_config
 from orun.tui import OrunApp
@@ -72,6 +72,7 @@ def cmd_continue(
     model_override: str = None,
     use_tools: bool = False,
     yolo: bool = False,
+    single_shot: bool = False,
 ):
     """Continue an existing conversation."""
     conv = db.get_conversation(conversation_id)
@@ -81,19 +82,30 @@ def cmd_continue(
 
     model_name = model_override if model_override else conv["model"]
 
-    # Set YOLO mode if requested (redundant if passed to run_chat_mode, but keeps local feedback)
-    if yolo:
-        console.print("🔥 YOLO MODE ENABLED", style=Colors.RED)
+    if single_shot:
+        # Run in single-shot mode
+        core.run_continue_shot(
+            conversation_id=conversation_id,
+            user_prompt=prompt or "",
+            image_paths=image_paths or [],
+            model_name=model_name,
+            use_tools=use_tools,
+            yolo=yolo,
+        )
+    else:
+        # Run in interactive mode
+        if yolo:
+            console.print("🔥 YOLO MODE ENABLED", style=Colors.RED)
 
-    app = OrunApp(
-        model_name=model_name,
-        initial_prompt=prompt or "",
-        initial_images=image_paths or [],
-        conversation_id=conversation_id,
-        use_tools=use_tools,
-        yolo=yolo,
-    )
-    app.run()
+        app = OrunApp(
+            model_name=model_name,
+            initial_prompt=prompt or "",
+            initial_images=image_paths or [],
+            conversation_id=conversation_id,
+            use_tools=use_tools,
+            yolo=yolo,
+        )
+        app.run()
 
 
 def cmd_last(
@@ -102,6 +114,7 @@ def cmd_last(
     model_override: str = None,
     use_tools: bool = False,
     yolo: bool = False,
+    single_shot: bool = False,
 ):
     """Continue the last conversation."""
     conversation_id = db.get_last_conversation_id()
@@ -116,6 +129,7 @@ def cmd_last(
         model_override,
         use_tools=use_tools,
         yolo=yolo,
+        single_shot=single_shot,
     )
 
 

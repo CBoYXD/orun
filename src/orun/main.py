@@ -194,6 +194,11 @@ def main():
                 "-i", "--images", nargs="*", type=str, help="Screenshot indices"
             )
             parser.add_argument(
+                "--single-shot",
+                action="store_true",
+                help="Run in single-shot mode (exit after response)",
+            )
+            parser.add_argument(
                 "--yolo",
                 action="store_true",
                 help="Enable YOLO mode (no confirmations)",
@@ -220,6 +225,7 @@ def main():
                 model_override,
                 use_tools=True,
                 yolo=args.yolo,
+                single_shot=args.single_shot,
             )
             return
 
@@ -229,6 +235,11 @@ def main():
             parser.add_argument("-m", "--model", help="Override model")
             parser.add_argument(
                 "-i", "--images", nargs="*", type=str, help="Screenshot indices"
+            )
+            parser.add_argument(
+                "--single-shot",
+                action="store_true",
+                help="Run in single-shot mode (exit after response)",
             )
             parser.add_argument(
                 "--yolo",
@@ -258,6 +269,7 @@ def main():
                 model_override,
                 use_tools=True,
                 yolo=args.yolo,
+                single_shot=args.single_shot,
             )
             return
 

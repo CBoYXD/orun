@@ -227,3 +227,106 @@ def run_single_shot(
         # Reset YOLO mode if it was enabled for this command
         if yolo:
             yolo_mode.yolo_active = False
+
+
+def run_continue_shot(
+    conversation_id: int,
+    user_prompt: str,
+    image_paths: list[str] | None,
+    model_name: str,
+    use_tools: bool = False,
+    yolo: bool = False,
+    output_file: str | None = None,
+):
+    """Continue an existing conversation in single-shot mode."""
+    utils.ensure_ollama_running()
+
+    # Set YOLO mode if requested
+    if yolo:
+        yolo_mode.yolo_active = True
+        console.print("🔥 YOLO MODE ENABLED for this command", style=Colors.RED)
+
+    # Load conversation history
+    conv = db.get_conversation(conversation_id)
+    if not conv:
+        print_error(f"Conversation #{conversation_id} not found.")
+        return
+
+    console.print(f"🤖 [{model_name}] Continuing conversation #{conversation_id}...", style=Colors.CYAN)
+
+    # Build messages from history
+    messages = []
+    for msg in db.get_conversation_messages(conversation_id):
+        message_dict = {"role": msg["role"], "content": msg["content"]}
+        if msg.get("images"):
+            message_dict["images"] = msg["images"]
+        messages.append(message_dict)
+
+    # Add new user message
+    if user_prompt or image_paths:
+        db.add_message(conversation_id, "user", user_prompt or "", image_paths or None)
+        messages.append({"role": "user", "content": user_prompt or "", "images": image_paths or None})
+
+    # Tool definitions
+    tool_defs = tools.TOOL_DEFINITIONS if use_tools else None
+
+    # Variable to hold the final output
+    final_output = ""
+
+    try:
+        # If using tools, we can't easily stream the first response because we need to parse JSON first
+        if use_tools:
+            response = ollama.chat(
+                model=model_name, messages=messages, tools=tool_defs, stream=False
+            )
+            msg = response["message"]
+
+            # Check for tool calls
+            if msg.get("tool_calls"):
+                # Add assistant's "thought" or empty tool call request to history
+                messages.append(msg)
+
+                execute_tool_calls(msg["tool_calls"], messages)
+
+                # Follow up with the tool outputs
+                if not output_file:
+                    console.print(
+                        f"🤖 [{model_name}] Processing tool output...", style=Colors.CYAN
+                    )
+                stream = ollama.chat(model=model_name, messages=messages, stream=True)
+                final_response = handle_ollama_stream(stream, silent=bool(output_file))
+                if final_response:
+                    db.add_message(conversation_id, "assistant", final_response)
+                    final_output = final_response
+            else:
+                # Normal response
+                if not output_file:
+                    console.print(msg["content"])
+                db.add_message(conversation_id, "assistant", msg["content"])
+                final_output = msg["content"]
+        else:
+            # Standard streaming
+            stream = ollama.chat(model=model_name, messages=messages, stream=True)
+            response = handle_ollama_stream(stream, silent=bool(output_file))
+            if response:
+                db.add_message(conversation_id, "assistant", response)
+                final_output = response
+
+        # Save to file if requested
+        if output_file and final_output:
+            try:
+                from pathlib import Path
+                output_path = Path(output_file)
+                output_path.parent.mkdir(parents=True, exist_ok=True)
+                output_path.write_text(final_output, encoding='utf-8')
+                console.print(f"\n✅ Output saved to: {output_file}", style=Colors.GREEN)
+            except Exception as e:
+                print_error(f"Failed to save output to file: {e}")
+
+    except Exception as e:
+        console.print()
+        print_error(f"Error: {e}")
+    finally:
+        # Reset YOLO mode if it was enabled for this command
+        if yolo:
+            yolo_mode.yolo_active = False
