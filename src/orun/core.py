@@ -119,6 +119,7 @@ def run_single_shot(
     prompt_template: str | None = None,
     strategy_template: str | None = None,
     file_paths: list[str] | None = None,
+    stdin_content: str | None = None,
 ):
     """Handles a single query to the model."""
     utils.ensure_ollama_running()
@@ -143,6 +144,11 @@ def run_single_shot(
         print_error(f"Template {missing} not found")
 
     full_prompt = build.text
+
+    # Add stdin content if provided (pipe input)
+    if stdin_content:
+        stdin_prefix = "--- Input from stdin ---\n"
+        full_prompt = f"{stdin_prefix}{stdin_content}\n\n{full_prompt}" if full_prompt else f"{stdin_prefix}{stdin_content}"
 
     # Add file context if provided
     if file_paths:

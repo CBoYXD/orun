@@ -297,3 +297,17 @@ def parse_file_patterns(file_args: list[str]) -> list[str]:
             unique_paths.append(path)
 
     return unique_paths
+
+
+def read_stdin() -> str | None:
+    """Reads input from stdin if available (for pipe support)."""
+    # Check if stdin is a pipe (not a TTY)
+    if not sys.stdin.isatty():
+        try:
+            stdin_content = sys.stdin.read()
+            if stdin_content:
+                console.print("📥 Read input from stdin", style=Colors.DIM)
+                return stdin_content
+        except Exception as e:
+            print_error(f"Error reading stdin: {e}")
+    return None

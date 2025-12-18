@@ -289,11 +289,15 @@ def main():
     if args.files:
         file_paths = utils.parse_file_patterns(args.files)
 
-    # If no prompt/images/files provided, but have a prompt/strategy template, show help
+    # Check for stdin input (pipe support)
+    stdin_content = utils.read_stdin()
+
+    # If no prompt/images/files/stdin provided, but have a prompt/strategy template, show help
     if (
         not user_prompt
         and not image_paths
         and not file_paths
+        and not stdin_content
         and not args.use_prompt
         and not args.use_strategy
     ):
@@ -310,6 +314,7 @@ def main():
         prompt_template=args.use_prompt,
         strategy_template=args.use_strategy,
         file_paths=file_paths,
+        stdin_content=stdin_content,
     )
 
 
