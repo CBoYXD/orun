@@ -1,5 +1,6 @@
 from orun import db, prompts_manager
 from orun.rich_utils import console, create_table, print_table
+from orun.search_config import search_config
 from orun.tui import OrunApp
 from orun.utils import Colors, print_error, print_success
 
@@ -174,3 +175,34 @@ def cmd_strategies():
         print_table(table)
     else:
         console.print("No strategy templates found.", style=Colors.YELLOW)
+
+
+def cmd_config_search(api_key: str = None, cse_id: str = None):
+    """Configure Google Custom Search API credentials."""
+    if not api_key or not cse_id:
+        # Show current configuration
+        console.print("\n[cyan]Google Search Configuration:[/cyan]")
+
+        if search_config.has_google_credentials():
+            console.print("  ✅ Google API configured", style=Colors.GREEN)
+            console.print(f"  API Key: {search_config.google_api_key[:10]}...{search_config.google_api_key[-4:]}", style=Colors.DIM)
+            console.print(f"  CSE ID: {search_config.google_cse_id}", style=Colors.DIM)
+        else:
+            console.print("  ❌ Google API not configured (using DuckDuckGo fallback)", style=Colors.YELLOW)
+
+        console.print(f"\n  Config file: {search_config.config_path}", style=Colors.DIM)
+        console.print("\n[yellow]Usage:[/yellow]")
+        console.print("  orun config-search <api_key> <cse_id>", style=Colors.CYAN)
+        console.print("\n[yellow]Get credentials:[/yellow]")
+        console.print("  API Key: https://console.cloud.google.com/", style=Colors.DIM)
+        console.print("  CSE ID: https://programmablesearchengine.google.com/", style=Colors.DIM)
+        return
+
+    # Save credentials
+    if search_config.save_google_credentials(api_key, cse_id):
+        print_success("✅ Google Search API configured successfully!")
+        console.print(f"  Config saved to: {search_config.config_path}", style=Colors.DIM)
+        console.print("\n  Web search will now use Google API (100 free queries/day)", style=Colors.GREEN)
+        console.print("  Fallback to DuckDuckGo when quota exceeded", style=Colors.DIM)
+    else:
+        print_error("Failed to save Google Search API credentials.")

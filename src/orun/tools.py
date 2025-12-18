@@ -5,6 +5,20 @@ import urllib.request
 from html.parser import HTMLParser
 import arxiv
 
+# Web search imports
+try:
+    from googleapiclient.discovery import build
+    from googleapiclient.errors import HttpError
+    GOOGLE_SEARCH_AVAILABLE = True
+except ImportError:
+    GOOGLE_SEARCH_AVAILABLE = False
+
+try:
+    from duckduckgo_search import DDGS
+    DDGS_AVAILABLE = True
+except ImportError:
+    DDGS_AVAILABLE = False
+
 
 # --- Helper for HTML Parsing ---
 
@@ -425,6 +439,96 @@ def get_arxiv_paper(arxiv_id: str) -> str:
         return f"Error fetching arXiv paper: {str(e)}"
 
 
+def web_search(query: str, max_results: int = 5) -> str:
+    """
+    Search the web for a query. First tries Google Custom Search API,
+    falls back to DuckDuckGo if Google fails or is not configured.
+    """
+    try:
+        max_results = min(int(max_results), 10)  # Limit to max 10 results
+    except (ValueError, TypeError):
+        max_results = 5
+
+    # Try Google Search first
+    try:
+        from orun.search_config import search_config
+
+        if search_config.has_google_credentials() and GOOGLE_SEARCH_AVAILABLE:
+            try:
+                service = build(
+                    "customsearch",
+                    "v1",
+                    developerKey=search_config.google_api_key
+                )
+
+                result = service.cse().list(
+                    q=query,
+                    cx=search_config.google_cse_id,
+                    num=max_results
+                ).execute()
+
+                items = result.get("items", [])
+                if not items:
+                    return f"No results found for query: {query}"
+
+                output = [f"**Google Search Results for '{query}':**\n"]
+                for i, item in enumerate(items, 1):
+                    title = item.get("title", "No title")
+                    link = item.get("link", "")
+                    snippet = item.get("snippet", "No description")
+
+                    output.append(f"{i}. **{title}**")
+                    output.append(f"   URL: {link}")
+                    output.append(f"   {snippet}\n")
+
+                return "\n".join(output)
+
+            except HttpError as e:
+                error_details = str(e)
+                if "quotaExceeded" in error_details or "dailyLimitExceeded" in error_details:
+                    # Quota exceeded, fall back to DuckDuckGo
+                    pass
+                else:
+                    return f"Google Search API error: {error_details}\n\nFalling back to DuckDuckGo..."
+            except Exception as e:
+                # Any other Google API error, fall back
+                pass
+    except ImportError:
+        pass
+
+    # Fallback to DuckDuckGo
+    if not DDGS_AVAILABLE:
+        return (
+            "Error: Web search is not available. "
+            "Google API is not configured and DuckDuckGo search library is not installed.\n\n"
+            "To configure:\n"
+            "1. Google: Add 'google_api_key' and 'google_cse_id' to ~/.orun/config.json\n"
+            "2. DuckDuckGo: Run 'uv sync' to install dependencies."
+        )
+
+    try:
+        ddgs = DDGS()
+        results = list(ddgs.text(query, max_results=max_results))
+
+        if not results:
+            return f"No results found for query: {query}"
+
+        output = [f"**DuckDuckGo Search Results for '{query}':**\n"]
+        for i, result in enumerate(results, 1):
+            title = result.get("title", "No title")
+            link = result.get("href", result.get("link", ""))
+            snippet = result.get("body", result.get("snippet", "No description"))
+
+            output.append(f"{i}. **{title}**")
+            output.append(f"   URL: {link}")
+            output.append(f"   {snippet}\n")
+
+        return "\n".join(output)
+
+    except Exception as e:
+        return f"Error performing web search: {str(e)}"
+
+
 # --- Map for Execution ---
 
 AVAILABLE_TOOLS = {
@@ -436,6 +540,7 @@ AVAILABLE_TOOLS = {
     "fetch_url": fetch_url,
     "search_arxiv": search_arxiv,
     "get_arxiv_paper": get_arxiv_paper,
+    "web_search": web_search,
 }
 
 # --- Schemas for Ollama ---
@@ -583,6 +688,27 @@ TOOL_DEFINITIONS = [
                     },
                 },
                 "required": ["arxiv_id"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "web_search",
+            "description": "Search the web using Google Custom Search API (with DuckDuckGo fallback). Returns titles, URLs, and snippets.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "The search query (e.g., 'Python programming tutorials', 'latest news AI')",
+                    },
+                    "max_results": {
+                        "type": "integer",
+                        "description": "Maximum number of results to return (default: 5, max: 10)",
+                    },
+                },
+                "required": ["query"],
             },
         },
     },

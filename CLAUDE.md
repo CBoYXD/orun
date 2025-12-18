@@ -76,6 +76,8 @@ orun shortcut <m> <s>      # Create shortcut for model
 orun history               # List recent conversations
 orun prompts               # List available prompt templates
 orun strategies            # List available strategy templates
+orun config-search         # View Google Search API configuration
+orun config-search <key> <cse_id>  # Set Google Search API credentials
 
 # Context
 orun c <id>                # Continue conversation by ID
@@ -121,7 +123,7 @@ Tools are enabled by default for all chat/query modes. The AI can:
 - `read_file`, `write_file`
 - `list_directory`, `search_files`
 - `run_shell_command`
-- `fetch_url`
+- `fetch_url`, `web_search` - Fetch web pages and search the internet
 - `search_arxiv`, `get_arxiv_paper` - Search and retrieve academic papers from arXiv
 User confirmation is required for execution.
 
@@ -166,6 +168,74 @@ These tools allow the AI to:
 - Summarize and analyze academic papers
 - Find relevant literature for your projects
 - Stay updated with the latest research
+
+### Web Search Integration
+The AI can search the web and fetch web pages using two methods:
+
+#### 1. Agent Tool (Automatic)
+**web_search(query, max_results=5)**
+- Search the web using Google Custom Search API (with DuckDuckGo fallback)
+- Returns titles, URLs, and snippets from search results
+- Max results: 10 per search
+- Automatically falls back to DuckDuckGo if Google API is not configured or quota exceeded
+- Example: `"Search the web for Python asyncio tutorials"`
+
+**fetch_url(url)**
+- Fetch and parse content from a specific URL
+- Converts HTML to readable markdown format
+- Returns page title and formatted content
+- Example: `"Fetch https://example.com"`
+
+#### 2. TUI Command (Interactive Chat)
+In interactive chat mode, use the `/search` command:
+
+```bash
+# Search the web for a query
+/search Python programming tutorials
+
+# Fetch a specific URL
+/search https://example.com
+/search example.com
+```
+
+The `/search` command automatically:
+- Detects if input is a URL or a search query
+- For URLs: Fetches and parses the page content
+- For queries: Searches the web using Google/DuckDuckGo
+- Sends results to AI for analysis
+- AI provides a summary with key insights
+
+#### Configuration
+Web search uses Google Custom Search API by default, with DuckDuckGo as fallback.
+
+To configure Google Custom Search API (optional but recommended for better results):
+1. Get an API key from [Google Cloud Console](https://console.cloud.google.com/)
+2. Create a Custom Search Engine at [Google CSE](https://programmablesearchengine.google.com/)
+3. Configure using the CLI command:
+
+```bash
+# Set Google API credentials
+orun config-search YOUR_API_KEY YOUR_CSE_ID
+
+# View current configuration
+orun config-search
+```
+
+Alternatively, you can manually edit `~/.orun/config.json`:
+```json
+{
+  "search": {
+    "google_api_key": "YOUR_API_KEY_HERE",
+    "google_cse_id": "YOUR_CSE_ID_HERE"
+  }
+}
+```
+
+**Free Tier Limits:**
+- Google Custom Search: 100 queries/day (free)
+- DuckDuckGo: Unlimited (no API key required)
+
+If Google API is not configured or quota is exceeded, the system automatically falls back to DuckDuckGo.
 
 ## YOLO Mode (No Confirmations)
 

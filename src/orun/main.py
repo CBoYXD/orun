@@ -78,6 +78,19 @@ def main():
 
             return
 
+        if cmd == "config-search":
+            if len(sys.argv) == 2:
+                # Show current config
+                commands.cmd_config_search()
+            elif len(sys.argv) == 4:
+                # Set config with api_key and cse_id
+                commands.cmd_config_search(sys.argv[2], sys.argv[3])
+            else:
+                print_warning("Usage: orun config-search <api_key> <cse_id>")
+                print_warning("   or: orun config-search  (to view current config)")
+
+            return
+
         if cmd == "chat":
             parser = argparse.ArgumentParser(prog="orun chat")
 
@@ -227,7 +240,7 @@ def main():
     # Default Query Mode (Single Shot)
     parser = argparse.ArgumentParser(
         description="AI CLI wrapper for Ollama",
-        usage="orun [command] [prompt] [options]\n\nCommands:\n  chat        Start interactive chat session\n  models      List available models\n  refresh     Sync models from Ollama\n  shortcut    Change model shortcut\n  set-active  Set active model\n  history     List recent conversations\n  prompts     List available prompt templates\n  strategies  List available strategy templates\n  c <id>      Continue conversation by ID\n  last        Continue last conversation\n\nSingle-shot options:\n  -p <prompt>     Use a specific prompt template\n  -s <strategy>   Use a specific strategy template",
+        usage="orun [command] [prompt] [options]\n\nCommands:\n  chat            Start interactive chat session\n  models          List available models\n  refresh         Sync models from Ollama\n  shortcut        Change model shortcut\n  set-active      Set active model\n  history         List recent conversations\n  prompts         List available prompt templates\n  strategies      List available strategy templates\n  config-search   Configure Google Search API credentials\n  c <id>          Continue conversation by ID\n  last            Continue last conversation\n\nSingle-shot options:\n  -p <prompt>     Use a specific prompt template\n  -s <strategy>   Use a specific strategy template",
     )
     parser.add_argument("prompt", nargs="*", help="Text prompt")
     parser.add_argument("-m", "--model", default="default", help="Model alias or name")
