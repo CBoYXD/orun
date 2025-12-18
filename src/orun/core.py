@@ -277,6 +277,7 @@ def run_continue_shot(
     use_tools: bool = False,
     yolo: bool = False,
     output_file: str | None = None,
+    model_options: dict | None = None,
 ):
     """Continue an existing conversation in single-shot mode."""
     utils.ensure_ollama_running()
