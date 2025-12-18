@@ -57,6 +57,7 @@ class ChatMessage(Static):
 class ChatScreen(Screen):
     BINDINGS = [
         Binding("ctrl+l", "clear_screen", "Clear"),
+        Binding("ctrl+v", "paste", "Paste"),
         Binding("left", "template_page_prev", "", show=False, priority=True),
         Binding("right", "template_page_next", "", show=False, priority=True),
     ]
@@ -329,6 +330,7 @@ class ChatScreen(Screen):
             ("/fetch <url>", "Fetch and parse a web page"),
             ("/arxiv <query|id>", "Search arXiv or get paper details"),
             ("/image [indices]", "Attach screenshots (e.g., '1', '1,2', '3x')"),
+            ("/paste", "Paste image from clipboard"),
             ("/prompt <name...>", "Activate prompt templates"),
             ("/prompt remove <name>", "Remove a prompt template"),
             ("/prompts [page|active]", "List available/active prompt templates"),
@@ -382,6 +384,55 @@ class ChatScreen(Screen):
         self.chat_container.mount(
             Static("[green]🧹 Conversation cleared.[/]", classes="status")
         )
+
+    @work(exclusive=False, thread=True)
+    def action_paste(self) -> None:
+        """Paste image or text from clipboard using Ctrl+V"""
+        try:
+            # First try to get an image from clipboard
+            image_path = utils.save_clipboard_image()
+            if image_path:
+                # Image found - add to pending
+                self.pending_images.append(image_path)
+                self.app.call_from_thread(
+                    self.chat_container.mount,
+                    Static(
+                        f"[green]📋 Clipboard image added to pending[/]\n🖼️  {os.path.basename(image_path)}",
+                        classes="status"
+                    )
+                )
+                self.app.call_from_thread(self.chat_container.scroll_end)
+            else:
+                # No image - try to get text and insert at cursor position
+                try:
+                    import pyperclip
+                    text = pyperclip.paste()
+                    if text:
+                        # Insert text at cursor position
+                        def insert_text():
+                            current_value = self.input_widget.value
+                            cursor_pos = self.input_widget.cursor_position
+                            new_value = current_value[:cursor_pos] + text + current_value[cursor_pos:]
+                            self.input_widget.value = new_value
+                            # Move cursor to end of pasted text
+                            self.input_widget.cursor_position = cursor_pos + len(text)
+
+                        self.app.call_from_thread(insert_text)
+                except ImportError:
+                    self.app.call_from_thread(
+                        self.chat_container.mount,
+                        Static("[yellow]pyperclip not installed - text paste unavailable[/]", classes="status")
+                    )
+                    self.app.call_from_thread(self.chat_container.scroll_end)
+                except Exception:
+                    # Text paste failed, silently ignore
+                    pass
+        except Exception as e:
+            self.app.call_from_thread(
+                self.chat_container.mount,
+                Static(f"[red]Error pasting from clipboard: {e}[/]", classes="status")
+            )
+            self.app.call_from_thread(self.chat_container.scroll_end)
 
     def on_input_changed(self, event: Input.Changed) -> None:
         if event.input.id != "chat_input":
@@ -611,6 +662,26 @@ class ChatScreen(Screen):
             except Exception as e:
                 self.chat_container.mount(
                     Static(f"[red]Error loading images: {e}[/]", classes="status")
+                )
+        elif cmd == "/paste":
+            # Save image from clipboard
+            try:
+                image_path = await asyncio.to_thread(utils.save_clipboard_image)
+                if image_path:
+                    self.pending_images.append(image_path)
+                    self.chat_container.mount(
+                        Static(
+                            f"[green]📋 Clipboard image added to pending[/]\n🖼️  {os.path.basename(image_path)}",
+                            classes="status"
+                        )
+                    )
+                else:
+                    self.chat_container.mount(
+                        Static("[yellow]No image found in clipboard[/]", classes="status")
+                    )
+            except Exception as e:
+                self.chat_container.mount(
+                    Static(f"[red]Error pasting from clipboard: {e}[/]", classes="status")
                 )
         elif cmd == "/prompt":
             tokens = [tok for tok in arg.split() if tok]

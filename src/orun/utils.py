@@ -163,3 +163,48 @@ def get_image_paths(image_args: list[str] | None) -> list[str]:
                 image_paths.append(path)
                 console.print(f"🖼️  Added: {os.path.basename(path)}", style=Colors.DIM)
     return image_paths
+
+
+def save_clipboard_image() -> str | None:
+    """
+    Saves an image from the clipboard to a temporary file.
+    Returns the file path if successful, None if no image in clipboard.
+    """
+    try:
+        from PIL import ImageGrab
+    except ImportError:
+        print_error("Pillow library not installed. Please run: pip install pillow")
+        return None
+
+    try:
+        # Get image from clipboard
+        image = ImageGrab.grabclipboard()
+
+        if image is None:
+            print_error("No image found in clipboard")
+            return None
+
+        # Check if it's an image (not a file path or other data)
+        if not hasattr(image, 'save'):
+            print_error("Clipboard content is not an image")
+            return None
+
+        # Create temp directory if it doesn't exist
+        temp_dir = Path.home() / ".orun" / "temp"
+        temp_dir.mkdir(parents=True, exist_ok=True)
+
+        # Generate filename with timestamp
+        import datetime
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"clipboard_{timestamp}.png"
+        filepath = temp_dir / filename
+
+        # Save image
+        image.save(filepath, "PNG")
+
+        console.print(f"📋 Saved clipboard image: {filename}", style=Colors.GREEN)
+        return str(filepath)
+
+    except Exception as e:
+        print_error(f"Failed to save clipboard image: {e}")
+        return None
