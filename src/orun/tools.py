@@ -14,7 +14,7 @@ except ImportError:
     GOOGLE_SEARCH_AVAILABLE = False
 
 try:
-    from duckduckgo_search import DDGS
+    from ddgs import DDGS
     DDGS_AVAILABLE = True
 except ImportError:
     DDGS_AVAILABLE = False
