@@ -125,6 +125,7 @@ def run_single_shot(
     stdin_content: str | None = None,
     output_file: str | None = None,
     system_prompt: str | None = None,
+    dir_context: str | None = None,
 ):
     """Handles a single query to the model."""
     utils.ensure_ollama_running()
@@ -154,6 +155,10 @@ def run_single_shot(
     if stdin_content:
         stdin_prefix = "--- Input from stdin ---\n"
         full_prompt = f"{stdin_prefix}{stdin_content}\n\n{full_prompt}" if full_prompt else f"{stdin_prefix}{stdin_content}"
+
+    # Add directory context if provided
+    if dir_context:
+        full_prompt = f"{dir_context}\n\n{full_prompt}" if full_prompt else dir_context
 
     # Add file context if provided
     if file_paths:

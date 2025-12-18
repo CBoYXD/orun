@@ -287,6 +287,9 @@ def main():
         "-f", "--files", nargs="*", type=str, help="Files to include as context (supports glob patterns)"
     )
     parser.add_argument(
+        "--dir", type=str, help="Directory to scan and include as context (recursive)"
+    )
+    parser.add_argument(
         "-p", "--prompt", dest="use_prompt", help="Use a specific prompt template"
     )
     parser.add_argument(
@@ -331,14 +334,20 @@ def main():
     if args.files:
         file_paths = utils.parse_file_patterns(args.files)
 
+    # Process directory argument
+    dir_context = None
+    if args.dir:
+        dir_context = utils.read_directory_context(args.dir)
+
     # Check for stdin input (pipe support)
     stdin_content = utils.read_stdin()
 
-    # If no prompt/images/files/stdin provided, but have a prompt/strategy template, show help
+    # If no prompt/images/files/dir/stdin provided, but have a prompt/strategy template, show help
     if (
         not user_prompt
         and not image_paths
         and not file_paths
+        and not dir_context
         and not stdin_content
         and not args.use_prompt
         and not args.use_strategy
@@ -359,6 +368,7 @@ def main():
         stdin_content=stdin_content,
         output_file=args.output,
         system_prompt=args.system,
+        dir_context=dir_context,
     )
 
 

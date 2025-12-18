@@ -311,3 +311,80 @@ def read_stdin() -> str | None:
         except Exception as e:
             print_error(f"Error reading stdin: {e}")
     return None
+
+
+def read_directory_context(dir_path: str, max_files: int = 50) -> str:
+    """
+    Recursively reads files from a directory and formats them as context.
+    Skips common binary/cache directories and limits total files.
+    """
+    import glob as glob_module
+
+    try:
+        path = Path(dir_path)
+        if not path.exists():
+            print_error(f"Directory not found: {dir_path}")
+            return ""
+
+        if not path.is_dir():
+            print_error(f"Not a directory: {dir_path}")
+            return ""
+
+        # Common patterns to exclude
+        exclude_dirs = {'.git', '__pycache__', 'node_modules', '.venv', 'venv', 'dist', 'build', '.cache', '.pytest_cache', 'target'}
+        exclude_exts = {'.pyc', '.pyo', '.so', '.dll', '.exe', '.bin', '.jpg', '.jpeg', '.png', '.gif', '.pdf', '.zip', '.tar', '.gz'}
+
+        # Find all files
+        all_files = []
+        for root, dirs, files in os.walk(path):
+            # Skip excluded directories
+            dirs[:] = [d for d in dirs if d not in exclude_dirs]
+
+            for file in files:
+                file_path = Path(root) / file
+                if file_path.suffix.lower() not in exclude_exts:
+                    all_files.append(file_path)
+
+                if len(all_files) >= max_files:
+                    break
+
+            if len(all_files) >= max_files:
+                break
+
+        if not all_files:
+            print_warning(f"No readable files found in {dir_path}")
+            return ""
+
+        # Read and format files
+        context_parts = []
+        files_read = 0
+
+        for file_path in all_files[:max_files]:
+            try:
+                # Try to read as text
+                content = file_path.read_text(encoding='utf-8', errors='ignore')
+
+                # Skip if too large (>100KB)
+                if len(content) > 100000:
+                    console.print(f"⏭️  Skipped (too large): {file_path.relative_to(path)}", style=Colors.DIM)
+                    continue
+
+                rel_path = file_path.relative_to(path)
+                context_parts.append(f"--- File: {rel_path} ---\n{content}\n")
+                files_read += 1
+                console.print(f"📄 Added: {rel_path}", style=Colors.DIM)
+
+            except Exception as e:
+                # Skip files that can't be read
+                continue
+
+        if files_read > 0:
+            console.print(f"✅ Read {files_read} files from {dir_path}", style=Colors.GREEN)
+            return "\n".join(context_parts)
+        else:
+            print_warning(f"No files could be read from {dir_path}")
+            return ""
+
+    except Exception as e:
+        print_error(f"Error reading directory {dir_path}: {e}")
+        return ""
