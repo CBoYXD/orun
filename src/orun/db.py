@@ -23,7 +23,7 @@ from orun.utils import (
 )
 
 DB_DIR = Path.home() / ".orun"
-DB_PATH = DB_DIR / "main.db"
+DB_PATH = DB_DIR / "history.db"
 
 DB_DIR.mkdir(parents=True, exist_ok=True)
 db = SqliteDatabase(DB_PATH)
