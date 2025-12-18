@@ -187,7 +187,7 @@ Note: Full consensus integration in interactive chat mode is planned for a futur
 
 ### Creating Custom Consensus Pipelines
 
-Add custom pipelines in `~/.orun/config.json`:
+Add custom pipelines in `~/.orun/config.json`. **User-defined pipelines automatically override defaults with the same name**:
 
 ```json
 {
@@ -216,6 +216,30 @@ Add custom pipelines in `~/.orun/config.json`:
   }
 }
 ```
+
+### Overriding Default Pipelines
+
+You can override any default pipeline by creating a user-defined pipeline with the same name in `~/.orun/config.json`. For example, to customize the `code_review` pipeline:
+
+```json
+{
+  "consensus": {
+    "pipelines": {
+      "code_review": {
+        "description": "My custom code review workflow",
+        "type": "sequential",
+        "models": [
+          {"name": "my-model:latest", "role": "coder"},
+          {"name": "another-model:latest", "role": "reviewer"}
+        ],
+        "pass_strategy": "accumulate"
+      }
+    }
+  }
+}
+```
+
+Your custom `code_review` will be used instead of the default one. The `orun consensus` command shows which pipelines are user-defined vs default.
 
 ### Configuration Options
 

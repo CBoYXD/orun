@@ -13,11 +13,12 @@ class ConsensusConfig:
         self.config_path = self.config_dir / "config.json"
         self.data_dir = Path(__file__).parent.parent.parent / "data" / "consensus"
         self.pipelines: Dict[str, dict] = {}
+        self.pipeline_sources: Dict[str, str] = {}  # Track source: 'user' or 'default'
 
         # Create .orun directory if it doesn't exist
         self.config_dir.mkdir(parents=True, exist_ok=True)
 
-        # Load configurations
+        # Load configurations (order matters: user first, then defaults)
         self.load_config()
         self.load_default_pipelines()
 
@@ -33,6 +34,7 @@ class ConsensusConfig:
                     # Load user-defined pipelines
                     for name, pipeline in user_pipelines.items():
                         self.pipelines[name] = pipeline
+                        self.pipeline_sources[name] = "user"
             else:
                 # Create default config with consensus section
                 self.create_default_config()
@@ -59,6 +61,7 @@ class ConsensusConfig:
                         # Don't overwrite user-defined pipelines
                         if pipeline_name not in self.pipelines:
                             self.pipelines[pipeline_name] = pipeline
+                            self.pipeline_sources[pipeline_name] = "default"
                 except Exception as e:
                     console.print(
                         f"Warning: Could not load {json_file.name}: {e}",
@@ -105,7 +108,8 @@ class ConsensusConfig:
                 "name": name,
                 "description": pipeline.get("description", "No description"),
                 "type": pipeline.get("type", "unknown"),
-                "models_count": len(pipeline.get("models", []))
+                "models_count": len(pipeline.get("models", [])),
+                "source": self.pipeline_sources.get(name, "unknown")
             })
         return sorted(result, key=lambda x: x["name"])
 
@@ -173,6 +177,7 @@ class ConsensusConfig:
 
             # Update in-memory pipelines
             self.pipelines[name] = pipeline
+            self.pipeline_sources[name] = "user"
 
             return True
         except Exception as e:

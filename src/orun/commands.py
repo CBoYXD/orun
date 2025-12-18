@@ -267,15 +267,23 @@ def cmd_consensus_list():
     if pipelines:
         table = create_table(
             "Available Consensus Pipelines",
-            ["Name", "Type", "Models", "Description"]
+            ["Name", "Type", "Models", "Source", "Description"]
         )
         for pipeline in pipelines:
+            # Color code based on source
+            source_display = pipeline["source"]
+            if pipeline["source"] == "user":
+                source_display = "[cyan]user[/cyan]"
+            else:
+                source_display = "[dim]default[/dim]"
+
             table.add_row(
                 pipeline["name"],
                 pipeline["type"],
                 str(pipeline["models_count"]),
-                pipeline["description"][:60] + "..." if len(pipeline["description"]) > 60 else pipeline["description"],
-                style=Colors.GREEN
+                source_display,
+                pipeline["description"][:50] + "..." if len(pipeline["description"]) > 50 else pipeline["description"],
+                style=Colors.GREEN if pipeline["source"] == "user" else None
             )
         print_table(table)
         console.print(
@@ -285,6 +293,10 @@ def cmd_consensus_list():
         console.print(
             "Or in chat: /consensus <name>",
             style=Colors.YELLOW
+        )
+        console.print(
+            "\n💡 Tip: User-defined pipelines override defaults with the same name",
+            style=Colors.DIM
         )
     else:
         console.print("No consensus pipelines found.", style=Colors.YELLOW)
