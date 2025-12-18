@@ -1,3 +1,4 @@
+import json
 import os
 from dataclasses import dataclass
 from pathlib import Path
@@ -91,8 +92,6 @@ def get_strategy(name: str) -> str:
             content = path.read_text(encoding="utf-8").strip()
             # If it's JSON, try to extract the relevant text
             if path.suffix == ".json":
-                import json
-
                 try:
                     data = json.loads(content)
                     # Handle different JSON structures

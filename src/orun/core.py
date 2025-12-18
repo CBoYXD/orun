@@ -1,4 +1,5 @@
 import json
+from pathlib import Path
 
 import ollama
 
@@ -247,7 +248,6 @@ def run_single_shot(
         # Save to file if requested
         if output_file and final_output:
             try:
-                from pathlib import Path
                 output_path = Path(output_file)
                 output_path.parent.mkdir(parents=True, exist_ok=True)
                 output_path.write_text(final_output, encoding='utf-8')
@@ -369,7 +369,6 @@ def run_continue_shot(
         # Save to file if requested
         if output_file and final_output:
             try:
-                from pathlib import Path
                 output_path = Path(output_file)
                 output_path.parent.mkdir(parents=True, exist_ok=True)
                 output_path.write_text(final_output, encoding='utf-8')

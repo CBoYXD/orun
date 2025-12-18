@@ -1,5 +1,6 @@
 import datetime
 import functools
+import glob
 import os
 import subprocess
 import sys
@@ -273,15 +274,13 @@ def read_file_context(file_paths: list[str]) -> str:
 
 def parse_file_patterns(file_args: list[str]) -> list[str]:
     """Expands file patterns (globs) to actual file paths."""
-    import glob as glob_module
-
     if not file_args:
         return []
 
     expanded_paths = []
     for pattern in file_args:
         # Support glob patterns
-        matches = glob_module.glob(pattern, recursive=True)
+        matches = glob.glob(pattern, recursive=True)
         if matches:
             expanded_paths.extend(matches)
         else:
@@ -317,9 +316,6 @@ def read_clipboard_text() -> str | None:
     """Reads text content from clipboard."""
     try:
         # Try using ImageGrab first (it can also get text on some platforms)
-        from PIL import ImageGrab
-        import subprocess
-
         # On Windows, use PowerShell to get clipboard text
         if sys.platform == "win32":
             try:
@@ -371,8 +367,6 @@ def read_clipboard_text() -> str | None:
 def write_clipboard_text(text: str) -> bool:
     """Writes text content to clipboard."""
     try:
-        import subprocess
-
         # On Windows, use PowerShell to set clipboard
         if sys.platform == "win32":
             try:
@@ -430,8 +424,6 @@ def read_directory_context(dir_path: str, max_files: int = 50) -> str:
     Recursively reads files from a directory and formats them as context.
     Skips common binary/cache directories and limits total files.
     """
-    import glob as glob_module
-
     try:
         path = Path(dir_path)
         if not path.exists():
