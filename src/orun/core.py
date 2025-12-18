@@ -118,6 +118,7 @@ def run_single_shot(
     yolo: bool = False,
     prompt_template: str | None = None,
     strategy_template: str | None = None,
+    file_paths: list[str] | None = None,
 ):
     """Handles a single query to the model."""
     utils.ensure_ollama_running()
@@ -142,6 +143,12 @@ def run_single_shot(
         print_error(f"Template {missing} not found")
 
     full_prompt = build.text
+
+    # Add file context if provided
+    if file_paths:
+        file_context = utils.read_file_context(file_paths)
+        if file_context:
+            full_prompt = f"{file_context}\n\n{full_prompt}" if full_prompt else file_context
 
     db.add_message(conversation_id, "user", full_prompt, image_paths or None)
 

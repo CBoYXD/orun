@@ -230,3 +230,70 @@ def save_clipboard_image() -> str | None:
     except Exception as e:
         # Silently fail - no image in clipboard
         return None
+
+
+def read_file_context(file_paths: list[str]) -> str:
+    """Reads multiple files and formats them as context for the AI."""
+    if not file_paths:
+        return ""
+
+    context_parts = []
+    for file_path in file_paths:
+        try:
+            path = Path(file_path)
+            if not path.exists():
+                print_error(f"File not found: {file_path}")
+                continue
+
+            if not path.is_file():
+                print_error(f"Not a file: {file_path}")
+                continue
+
+            # Read file content
+            try:
+                content = path.read_text(encoding='utf-8')
+            except UnicodeDecodeError:
+                # Try with latin-1 as fallback
+                try:
+                    content = path.read_text(encoding='latin-1')
+                except Exception as e:
+                    print_error(f"Could not read {file_path}: {e}")
+                    continue
+
+            context_parts.append(f"--- File: {file_path} ---\n{content}\n")
+            console.print(f"📄 Added file: {file_path}", style=Colors.DIM)
+
+        except Exception as e:
+            print_error(f"Error reading {file_path}: {e}")
+
+    if context_parts:
+        return "\n".join(context_parts)
+    return ""
+
+
+def parse_file_patterns(file_args: list[str]) -> list[str]:
+    """Expands file patterns (globs) to actual file paths."""
+    import glob as glob_module
+
+    if not file_args:
+        return []
+
+    expanded_paths = []
+    for pattern in file_args:
+        # Support glob patterns
+        matches = glob_module.glob(pattern, recursive=True)
+        if matches:
+            expanded_paths.extend(matches)
+        else:
+            # Not a pattern, treat as literal path
+            expanded_paths.append(pattern)
+
+    # Remove duplicates while preserving order
+    seen = set()
+    unique_paths = []
+    for path in expanded_paths:
+        if path not in seen:
+            seen.add(path)
+            unique_paths.append(path)
+
+    return unique_paths

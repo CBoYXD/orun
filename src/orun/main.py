@@ -240,12 +240,15 @@ def main():
     # Default Query Mode (Single Shot)
     parser = argparse.ArgumentParser(
         description="AI CLI wrapper for Ollama",
-        usage="orun [command] [prompt] [options]\n\nCommands:\n  chat            Start interactive chat session\n  models          List available models\n  refresh         Sync models from Ollama\n  shortcut        Change model shortcut\n  set-active      Set active model\n  history         List recent conversations\n  prompts         List available prompt templates\n  strategies      List available strategy templates\n  config-search   Configure Google Search API credentials\n  c <id>          Continue conversation by ID\n  last            Continue last conversation\n\nSingle-shot options:\n  -p <prompt>     Use a specific prompt template\n  -s <strategy>   Use a specific strategy template",
+        usage="orun [command] [prompt] [options]\n\nCommands:\n  chat            Start interactive chat session\n  models          List available models\n  refresh         Sync models from Ollama\n  shortcut        Change model shortcut\n  set-active      Set active model\n  history         List recent conversations\n  prompts         List available prompt templates\n  strategies      List available strategy templates\n  config-search   Configure Google Search API credentials\n  c <id>          Continue conversation by ID\n  last            Continue last conversation\n\nSingle-shot options:\n  -p <prompt>     Use a specific prompt template\n  -s <strategy>   Use a specific strategy template\n  -f <file>       Add file(s) as context (supports globs)",
     )
     parser.add_argument("prompt", nargs="*", help="Text prompt")
     parser.add_argument("-m", "--model", default="default", help="Model alias or name")
     parser.add_argument(
         "-i", "--images", nargs="*", type=str, help="Screenshot indices"
+    )
+    parser.add_argument(
+        "-f", "--files", nargs="*", type=str, help="Files to include as context (supports glob patterns)"
     )
     parser.add_argument(
         "-p", "--prompt", dest="use_prompt", help="Use a specific prompt template"
@@ -281,10 +284,16 @@ def main():
     user_prompt = " ".join(args.prompt) if args.prompt else ""
     image_paths = utils.get_image_paths(args.images)
 
-    # If no prompt/images provided, but have a prompt/strategy template, show help
+    # Process file arguments
+    file_paths = []
+    if args.files:
+        file_paths = utils.parse_file_patterns(args.files)
+
+    # If no prompt/images/files provided, but have a prompt/strategy template, show help
     if (
         not user_prompt
         and not image_paths
+        and not file_paths
         and not args.use_prompt
         and not args.use_strategy
     ):
@@ -300,6 +309,7 @@ def main():
         yolo=args.yolo,
         prompt_template=args.use_prompt,
         strategy_template=args.use_strategy,
+        file_paths=file_paths,
     )
 
 
