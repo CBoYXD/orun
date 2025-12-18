@@ -1,5 +1,6 @@
 import asyncio
 import json
+import os
 
 import ollama
 from rich.markdown import Markdown
@@ -10,7 +11,7 @@ from textual.containers import VerticalScroll
 from textual.screen import Screen
 from textual.widgets import Footer, Header, Input, Static
 
-from orun import db, prompts_manager, tools
+from orun import db, prompts_manager, tools, utils
 from orun.yolo import yolo_mode
 
 SEARCH_ANALYSIS_PROMPT_NAME = "search_analysis"
@@ -93,6 +94,7 @@ class ChatScreen(Screen):
         self.command_hint_widget = None
         self.template_list_state = None
         self.template_list_widget = None
+        self.pending_images = []
 
         self.search_analysis_prompt = prompts_manager.get_prompt(SEARCH_ANALYSIS_PROMPT_NAME)
         self.arxiv_analysis_prompt = prompts_manager.get_prompt(ARXIV_ANALYSIS_PROMPT_NAME)
@@ -326,6 +328,7 @@ class ChatScreen(Screen):
             ("/search <query>", "Search the web (Google/DuckDuckGo)"),
             ("/fetch <url>", "Fetch and parse a web page"),
             ("/arxiv <query|id>", "Search arXiv or get paper details"),
+            ("/image [indices]", "Attach screenshots (e.g., '1', '1,2', '3x')"),
             ("/prompt <name...>", "Activate prompt templates"),
             ("/prompt remove <name>", "Remove a prompt template"),
             ("/prompts [page|active]", "List available/active prompt templates"),
@@ -415,8 +418,25 @@ class ChatScreen(Screen):
         payload = self.build_user_payload(user_input)
         display_text = self.display_content_for("user", user_input)
         self.mount_message("user", display_text)
-        self.messages.append({"role": "user", "content": payload})
-        db.add_message(self.conversation_id, "user", payload)
+
+        # Attach pending images if any
+        images_to_attach = self.pending_images if self.pending_images else None
+        if images_to_attach:
+            # Show which images are being attached
+            image_names = [os.path.basename(img) for img in images_to_attach]
+            self.chat_container.mount(
+                Static(
+                    f"[dim]📎 Attached {len(images_to_attach)} image(s): {', '.join(image_names)}[/]",
+                    classes="status"
+                )
+            )
+            self.messages.append({"role": "user", "content": payload, "images": images_to_attach})
+            db.add_message(self.conversation_id, "user", payload, images_to_attach)
+            # Clear pending images after attaching
+            self.pending_images = []
+        else:
+            self.messages.append({"role": "user", "content": payload})
+            db.add_message(self.conversation_id, "user", payload)
 
         # Start AI Processing
         self.process_ollama_turn()
@@ -565,6 +585,32 @@ class ChatScreen(Screen):
                     )
                     trigger_model = True
                     self.process_ollama_turn()
+        elif cmd == "/image":
+            # Parse arguments like -i parameter (1, 1,2, 3x, or empty for latest)
+            tokens = [tok for tok in arg.split() if tok]
+            image_args = tokens if tokens else []
+
+            # Get image paths using the same logic as -i parameter
+            try:
+                new_images = await asyncio.to_thread(utils.get_image_paths, image_args if image_args else None)
+                if new_images:
+                    self.pending_images.extend(new_images)
+                    # Display confirmation
+                    image_names = [f"🖼️  {os.path.basename(img)}" for img in new_images]
+                    self.chat_container.mount(
+                        Static(
+                            f"[green]Images added to pending ({len(new_images)}):[/]\n" + "\n".join(image_names),
+                            classes="status"
+                        )
+                    )
+                else:
+                    self.chat_container.mount(
+                        Static("[yellow]No images found matching the criteria.[/]", classes="status")
+                    )
+            except Exception as e:
+                self.chat_container.mount(
+                    Static(f"[red]Error loading images: {e}[/]", classes="status")
+                )
         elif cmd == "/prompt":
             tokens = [tok for tok in arg.split() if tok]
             if not tokens:
