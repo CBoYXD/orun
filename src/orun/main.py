@@ -296,6 +296,9 @@ def main():
         "-o", "--output", type=str, help="Save output to file instead of printing to console"
     )
     parser.add_argument(
+        "--system", type=str, help="Custom system prompt to guide the AI's behavior"
+    )
+    parser.add_argument(
         "--yolo", action="store_true", help="Enable YOLO mode (no confirmations)"
     )
 
@@ -355,6 +358,7 @@ def main():
         file_paths=file_paths,
         stdin_content=stdin_content,
         output_file=args.output,
+        system_prompt=args.system,
     )
 
 

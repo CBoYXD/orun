@@ -124,6 +124,7 @@ def run_single_shot(
     file_paths: list[str] | None = None,
     stdin_content: str | None = None,
     output_file: str | None = None,
+    system_prompt: str | None = None,
 ):
     """Handles a single query to the model."""
     utils.ensure_ollama_running()
@@ -162,7 +163,11 @@ def run_single_shot(
 
     db.add_message(conversation_id, "user", full_prompt, image_paths or None)
 
-    messages = [{"role": "user", "content": full_prompt, "images": image_paths or None}]
+    # Build messages array with optional system prompt
+    messages = []
+    if system_prompt:
+        messages.append({"role": "system", "content": system_prompt})
+    messages.append({"role": "user", "content": full_prompt, "images": image_paths or None})
 
     # Tool definitions
     tool_defs = tools.TOOL_DEFINITIONS if use_tools else None
