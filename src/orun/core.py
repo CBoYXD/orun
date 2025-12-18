@@ -129,6 +129,7 @@ def run_single_shot(
     clipboard_content: str | None = None,
     to_clipboard: bool = False,
     model_options: dict | None = None,
+    quiet: bool = False,
 ):
     """Handles a single query to the model."""
     utils.ensure_ollama_running()
@@ -136,9 +137,11 @@ def run_single_shot(
     # Set YOLO mode if requested
     if yolo:
         yolo_mode.yolo_active = True
-        console.print("🔥 YOLO MODE ENABLED for this command", style=Colors.RED)
+        if not quiet:
+            console.print("🔥 YOLO MODE ENABLED for this command", style=Colors.RED)
 
-    console.print(f"🤖 [{model_name}] Thinking...", style=Colors.CYAN)
+    if not quiet:
+        console.print(f"🤖 [{model_name}] Thinking...", style=Colors.CYAN)
 
     conversation_id = db.create_conversation(model_name)
 
@@ -208,7 +211,7 @@ def run_single_shot(
                 execute_tool_calls(msg["tool_calls"], messages)
 
                 # Follow up with the tool outputs
-                if not output_file:
+                if not output_file and not quiet:
                     console.print(
                         f"🤖 [{model_name}] Processing tool output...", style=Colors.CYAN
                     )
@@ -218,13 +221,13 @@ def run_single_shot(
                     stream=True,
                     options=model_options
                 )
-                final_response = handle_ollama_stream(stream, silent=bool(output_file))
+                final_response = handle_ollama_stream(stream, silent=(bool(output_file) or quiet))
                 if final_response:
                     db.add_message(conversation_id, "assistant", final_response)
                     final_output = final_response
             else:
                 # Normal response
-                if not output_file:
+                if not output_file and not quiet:
                     console.print(msg["content"])
                 db.add_message(conversation_id, "assistant", msg["content"])
                 final_output = msg["content"]
@@ -236,7 +239,7 @@ def run_single_shot(
                 stream=True,
                 options=model_options
             )
-            response = handle_ollama_stream(stream, silent=bool(output_file))
+            response = handle_ollama_stream(stream, silent=(bool(output_file) or quiet))
             if response:
                 db.add_message(conversation_id, "assistant", response)
                 final_output = response
@@ -248,7 +251,8 @@ def run_single_shot(
                 output_path = Path(output_file)
                 output_path.parent.mkdir(parents=True, exist_ok=True)
                 output_path.write_text(final_output, encoding='utf-8')
-                console.print(f"\n✅ Output saved to: {output_file}", style=Colors.GREEN)
+                if not quiet:
+                    console.print(f"\n✅ Output saved to: {output_file}", style=Colors.GREEN)
             except Exception as e:
                 print_error(f"Failed to save output to file: {e}")
 

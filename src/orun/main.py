@@ -314,6 +314,9 @@ def main():
         "--top-p", type=float, help="Top-p sampling (0.0-1.0, default: varies by model)"
     )
     parser.add_argument(
+        "-q", "--quiet", action="store_true", help="Quiet mode: suppress progress messages"
+    )
+    parser.add_argument(
         "--yolo", action="store_true", help="Enable YOLO mode (no confirmations)"
     )
 
@@ -397,6 +400,7 @@ def main():
         clipboard_content=clipboard_content,
         to_clipboard=args.to_clipboard,
         model_options=model_options if model_options else None,
+        quiet=args.quiet,
     )
 
 
