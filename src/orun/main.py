@@ -3,6 +3,7 @@ import os
 import sys
 
 from orun import commands, core, db, utils
+from orun.models_config import models_config
 from orun.rich_utils import console
 from orun.tui import OrunApp
 from orun.utils import Colors, print_warning
@@ -17,7 +18,7 @@ def main():
 
     db.initialize()
 
-    models = db.get_models()
+    models = models_config.get_models()
 
     # Subcommand Dispatch
 
@@ -151,7 +152,7 @@ def main():
             model_name = (
                 models.get(args.model, args.model)
                 if args.model
-                else db.get_active_model()
+                else models_config.get_active_model()
             )
 
             if not model_name:
@@ -165,7 +166,7 @@ def main():
                 return
 
             if args.model:
-                db.set_active_model(model_name)
+                models_config.set_active_model(model_name)
 
             app = OrunApp(
                 model_name=model_name,
@@ -211,7 +212,7 @@ def main():
                     model_override = conv["model"]
 
             if model_override:
-                db.set_active_model(model_override)
+                models_config.set_active_model(model_override)
 
             # Always enable tools
             commands.cmd_continue(
@@ -256,7 +257,7 @@ def main():
                         model_override = conv["model"]
 
             if model_override:
-                db.set_active_model(model_override)
+                models_config.set_active_model(model_override)
 
             # Always enable tools
             commands.cmd_last(
@@ -395,10 +396,10 @@ Examples:
         # User explicitly asked for a model
         model_name = models.get(args.model, args.model)
         # Update active model
-        db.set_active_model(model_name)
+        models_config.set_active_model(model_name)
     else:
         # User didn't specify, use active
-        model_name = db.get_active_model()
+        model_name = models_config.get_active_model()
 
     if not model_name:
         console.print("No active model set.", style=Colors.RED)

@@ -15,6 +15,7 @@ from textual.widgets import Footer, Header, Input, Static
 from orun import db, prompts_manager, tools, utils
 from orun.yolo import yolo_mode
 from orun.consensus_config import consensus_config
+from orun.models_config import models_config
 
 SEARCH_ANALYSIS_PROMPT_NAME = "search_analysis"
 ARXIV_ANALYSIS_PROMPT_NAME = "arxiv_analysis"
@@ -1022,8 +1023,8 @@ class ChatScreen(Screen):
             )
         elif cmd == "/model":
             if not arg:
-                models = await asyncio.to_thread(db.get_models)
-                active = await asyncio.to_thread(db.get_active_model)
+                models = await asyncio.to_thread(models_config.get_models)
+                active = await asyncio.to_thread(models_config.get_active_model)
                 if not models:
                     self.chat_container.mount(
                         Static(
@@ -1038,13 +1039,13 @@ class ChatScreen(Screen):
                         lines.append(f"  [green]{alias}[/green] -> {name}{marker}")
                     self.chat_container.mount(Static("\n".join(lines), classes="status"))
             else:
-                switched = await asyncio.to_thread(db.set_active_model, arg)
+                switched = await asyncio.to_thread(models_config.set_active_model, arg)
                 if not switched:
                     self.chat_container.mount(
                         Static(f"[red]Model '{arg}' not found.[/]", classes="status")
                     )
                 else:
-                    new_model = await asyncio.to_thread(db.get_active_model)
+                    new_model = await asyncio.to_thread(models_config.get_active_model)
                     self.model_name = new_model or arg
                     self.title = f"Orun - {self.model_name}"
                     self.messages = []
@@ -1062,7 +1063,7 @@ class ChatScreen(Screen):
             )
             self.chat_container.scroll_end()
             try:
-                await asyncio.to_thread(db.refresh_ollama_models)
+                await asyncio.to_thread(models_config.refresh_ollama_models)
                 self.chat_container.mount(
                     Static("[green]Model list reloaded.[/]", classes="status")
                 )

@@ -13,6 +13,7 @@ from orun import db, tools, utils
 from orun.rich_utils import console
 from orun.utils import Colors, print_error
 from orun.consensus_config import consensus_config
+from orun.models_config import models_config
 from orun.core import execute_tool_calls, handle_ollama_stream
 
 
@@ -42,7 +43,7 @@ def run_consensus(
         return ""
 
     # Validate pipeline against available models
-    available_models = db.get_models()
+    available_models = models_config.get_models()
     is_valid, error_msg = consensus_config.validate_pipeline(pipeline, available_models)
     if not is_valid:
         print_error(f"Pipeline validation failed:")

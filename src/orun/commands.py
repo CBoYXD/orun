@@ -1,14 +1,15 @@
 from orun import core, db, prompts_manager, tools
 from orun.rich_utils import console, create_table, print_table
 from orun.consensus_config import consensus_config
+from orun.models_config import models_config
 from orun.tui import OrunApp
 from orun.utils import Colors, print_error, print_success
 
 
 def cmd_models():
     """Prints all available models and their aliases using a Rich table."""
-    models = db.get_models()
-    active_model = db.get_active_model()
+    models = models_config.get_models()
+    active_model = models_config.get_active_model()
 
     if not models:
         console.print("  No models found.", style=Colors.YELLOW)
@@ -136,12 +137,12 @@ def cmd_last(
 def cmd_refresh():
     """Syncs models from Ollama."""
     console.print("🔄 Syncing models from Ollama...", style=Colors.CYAN)
-    db.refresh_ollama_models()
+    models_config.refresh_ollama_models()
 
 
 def cmd_shortcut(identifier: str, new_shortcut: str):
     """Updates a model's shortcut."""
-    if db.update_model_shortcut(identifier, new_shortcut):
+    if models_config.update_model_shortcut(identifier, new_shortcut):
         print_success(
             f"Shortcut updated: {new_shortcut} -> {identifier} (or resolved full name)"
         )
@@ -153,8 +154,8 @@ def cmd_shortcut(identifier: str, new_shortcut: str):
 
 def cmd_set_active(target: str):
     """Sets the active model."""
-    db.set_active_model(target)
-    active = db.get_active_model()
+    models_config.set_active_model(target)
+    active = models_config.get_active_model()
     if active:
         print_success(f"Active model set to: {active}")
     else:
