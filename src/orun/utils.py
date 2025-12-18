@@ -1,3 +1,4 @@
+import datetime
 import functools
 import os
 import subprocess
@@ -6,6 +7,7 @@ import time
 from pathlib import Path
 
 import ollama
+from PIL import Image, ImageGrab
 
 from .rich_utils import Colors, console, print_error, print_info, print_success, print_warning
 
@@ -171,22 +173,32 @@ def save_clipboard_image() -> str | None:
     Returns the file path if successful, None if no image in clipboard.
     """
     try:
-        from PIL import ImageGrab
-    except ImportError:
-        print_error("Pillow library not installed. Please run: pip install pillow")
-        return None
-
-    try:
         # Get image from clipboard
-        image = ImageGrab.grabclipboard()
+        clipboard_content = ImageGrab.grabclipboard()
 
-        if image is None:
-            print_error("No image found in clipboard")
+        if clipboard_content is None:
             return None
 
-        # Check if it's an image (not a file path or other data)
-        if not hasattr(image, 'save'):
-            print_error("Clipboard content is not an image")
+        # Handle different clipboard content types
+        image = None
+
+        # Check if it's already a PIL Image
+        if isinstance(clipboard_content, Image.Image):
+            image = clipboard_content
+        # Check if it's a list of file paths (Windows file copy)
+        elif isinstance(clipboard_content, list):
+            # Try to open the first file if it's an image
+            try:
+                first_file = Path(clipboard_content[0])
+                if first_file.suffix.lower() in ['.png', '.jpg', '.jpeg', '.gif', '.bmp']:
+                    image = Image.open(first_file)
+            except:
+                return None
+        else:
+            # Unknown format
+            return None
+
+        if image is None:
             return None
 
         # Create temp directory if it doesn't exist
@@ -194,10 +206,20 @@ def save_clipboard_image() -> str | None:
         temp_dir.mkdir(parents=True, exist_ok=True)
 
         # Generate filename with timestamp
-        import datetime
         timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
         filename = f"clipboard_{timestamp}.png"
         filepath = temp_dir / filename
+
+        # Convert to RGB if needed (for RGBA or other modes)
+        if image.mode in ('RGBA', 'LA', 'P'):
+            # Convert RGBA to RGB with white background
+            background = Image.new('RGB', image.size, (255, 255, 255))
+            if image.mode == 'P':
+                image = image.convert('RGBA')
+            background.paste(image, mask=image.split()[-1] if image.mode in ('RGBA', 'LA') else None)
+            image = background
+        elif image.mode != 'RGB':
+            image = image.convert('RGB')
 
         # Save image
         image.save(filepath, "PNG")
@@ -206,5 +228,5 @@ def save_clipboard_image() -> str | None:
         return str(filepath)
 
     except Exception as e:
-        print_error(f"Failed to save clipboard image: {e}")
+        # Silently fail - no image in clipboard
         return None

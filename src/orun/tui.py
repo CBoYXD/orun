@@ -1,6 +1,7 @@
 import asyncio
 import json
 import os
+import traceback
 
 import ollama
 from rich.markdown import Markdown
@@ -57,7 +58,6 @@ class ChatMessage(Static):
 class ChatScreen(Screen):
     BINDINGS = [
         Binding("ctrl+l", "clear_screen", "Clear"),
-        Binding("ctrl+v", "paste", "Paste"),
         Binding("left", "template_page_prev", "", show=False, priority=True),
         Binding("right", "template_page_next", "", show=False, priority=True),
     ]
@@ -386,11 +386,12 @@ class ChatScreen(Screen):
         )
 
     @work(exclusive=False, thread=True)
-    def action_paste(self) -> None:
-        """Paste image or text from clipboard using Ctrl+V"""
+    def run_paste_worker(self) -> None:
+        """Worker thread for paste operation"""
         try:
-            # First try to get an image from clipboard
+            # Try to get an image from clipboard
             image_path = utils.save_clipboard_image()
+
             if image_path:
                 # Image found - add to pending
                 self.pending_images.append(image_path)
@@ -403,34 +404,17 @@ class ChatScreen(Screen):
                 )
                 self.app.call_from_thread(self.chat_container.scroll_end)
             else:
-                # No image - try to get text and insert at cursor position
-                try:
-                    import pyperclip
-                    text = pyperclip.paste()
-                    if text:
-                        # Insert text at cursor position
-                        def insert_text():
-                            current_value = self.input_widget.value
-                            cursor_pos = self.input_widget.cursor_position
-                            new_value = current_value[:cursor_pos] + text + current_value[cursor_pos:]
-                            self.input_widget.value = new_value
-                            # Move cursor to end of pasted text
-                            self.input_widget.cursor_position = cursor_pos + len(text)
-
-                        self.app.call_from_thread(insert_text)
-                except ImportError:
-                    self.app.call_from_thread(
-                        self.chat_container.mount,
-                        Static("[yellow]pyperclip not installed - text paste unavailable[/]", classes="status")
-                    )
-                    self.app.call_from_thread(self.chat_container.scroll_end)
-                except Exception:
-                    # Text paste failed, silently ignore
-                    pass
+                # No image found
+                self.app.call_from_thread(
+                    self.chat_container.mount,
+                    Static("[yellow]No image found in clipboard[/]", classes="status")
+                )
+                self.app.call_from_thread(self.chat_container.scroll_end)
         except Exception as e:
+            error_details = traceback.format_exc()
             self.app.call_from_thread(
                 self.chat_container.mount,
-                Static(f"[red]Error pasting from clipboard: {e}[/]", classes="status")
+                Static(f"[red]Error pasting from clipboard: {e}[/]\n[dim]{error_details}[/]", classes="status")
             )
             self.app.call_from_thread(self.chat_container.scroll_end)
 
