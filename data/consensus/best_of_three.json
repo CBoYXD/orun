@@ -1,21 +1,21 @@
 {
-  "description": "Three attempts, show all results",
+  "description": "Three attempts with search model, show all results",
   "type": "parallel",
   "models": [
     {
-      "name": "llama3.2:latest",
+      "name": "qwen3:8b",
       "options": {
         "temperature": 0.8
       }
     },
     {
-      "name": "llama3.2:latest",
+      "name": "qwen3:8b",
       "options": {
         "temperature": 0.8
       }
     },
     {
-      "name": "llama3.2:latest",
+      "name": "qwen3:8b",
       "options": {
         "temperature": 0.8
       }

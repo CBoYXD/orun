@@ -1,21 +1,29 @@
 {
-  "description": "Generate code then review it",
+  "description": "Generate code with fast_coder, review with gpt, refine with coder",
   "type": "sequential",
   "models": [
     {
-      "name": "qwen2.5-coder:latest",
-      "role": "coder",
-      "system_prompt": "Generate clean, efficient, well-documented code. Follow best practices and ensure the code is production-ready.",
+      "name": "qwen2.5-coder:14b",
+      "role": "fast_coder",
+      "system_prompt": "Generate clean, efficient, well-documented code quickly. Focus on correctness and best practices.",
       "options": {
         "temperature": 0.3
       }
     },
     {
-      "name": "llama3.2:latest",
+      "name": "gpt-oss:20b",
       "role": "reviewer",
-      "system_prompt": "Review the code for bugs, improvements, security issues, and best practices. Provide constructive feedback and suggestions for improvement.",
+      "system_prompt": "Review the code for bugs, security issues, performance problems, and best practices. Provide detailed feedback.",
       "options": {
         "temperature": 0.5
+      }
+    },
+    {
+      "name": "qwen3-coder:30b",
+      "role": "refiner",
+      "system_prompt": "Based on the review, create the final refined version of the code with all improvements applied.",
+      "options": {
+        "temperature": 0.4
       }
     }
   ],

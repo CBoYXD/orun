@@ -1,17 +1,9 @@
 {
-  "description": "Research → Outline → Write workflow",
+  "description": "Research (llama) → Outline (qwen3) → Write (gpt) workflow",
   "type": "sequential",
   "models": [
     {
-      "name": "llama3.2:latest",
-      "role": "researcher",
-      "system_prompt": "Research the topic thoroughly. Use web_search and fetch_url tools to gather comprehensive information from reliable sources. Focus on finding accurate, up-to-date facts and diverse perspectives.",
-      "options": {
-        "temperature": 0.7
-      }
-    },
-    {
-      "name": "qwen2.5-coder:latest",
+      "name": "qwen3:8b",
       "role": "outliner",
       "system_prompt": "Based on the research provided, create a detailed, well-structured outline for a comprehensive paper. Include main sections, subsections, and key points to cover.",
       "options": {
@@ -19,7 +11,7 @@
       }
     },
     {
-      "name": "llama3.2:latest",
+      "name": "gpt-oss:20b",
       "role": "writer",
       "system_prompt": "Write a well-structured, comprehensive paper based on the research and outline. Use clear, academic language and ensure all claims are supported by the research. Include proper introduction, body, and conclusion.",
       "options": {

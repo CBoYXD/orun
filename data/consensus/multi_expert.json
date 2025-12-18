@@ -1,21 +1,21 @@
 {
-  "description": "Multiple models analyze, then synthesize",
+  "description": "Multiple models (llama + qwen3 + gpt) analyze, then qwen3 30b synthesizes",
   "type": "parallel",
   "models": [
     {
-      "name": "llama3.2:latest",
+      "name": "llama3.1:8b",
       "options": {
         "temperature": 0.7
       }
     },
     {
-      "name": "qwen2.5-coder:latest",
+      "name": "qwen3:8b",
       "options": {
         "temperature": 0.7
       }
     },
     {
-      "name": "mistral:latest",
+      "name": "gpt-oss:20b",
       "options": {
         "temperature": 0.7
       }
@@ -23,7 +23,7 @@
   ],
   "aggregation": {
     "method": "synthesis",
-    "synthesizer_model": "llama3.2:latest",
-    "synthesis_prompt": "You have received multiple expert responses to the same question. Carefully analyze them, identify common insights and disagreements, then provide a comprehensive synthesis that combines the best aspects of each response."
+    "synthesizer_model": "qwen3:30b",
+    "synthesis_prompt": "You have received three expert responses to the same question from different AI models. Carefully analyze all responses, identify common insights and disagreements, evaluate the quality of reasoning, and provide a comprehensive synthesis that combines the best aspects of each response while correcting any errors."
   }
 }

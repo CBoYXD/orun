@@ -1,0 +1,23 @@
+{
+  "description": "Vision code analysis (qwenvl) → Code generation (qwen3-coder)",
+  "type": "sequential",
+  "models": [
+    {
+      "name": "qwen3-vl:30b",
+      "role": "vision_analyzer",
+      "system_prompt": "Analyze the provided image(s) for code, diagrams, UI elements, or technical content. Extract code snippets, identify patterns, describe architecture, and note any technical details.",
+      "options": {
+        "temperature": 0.5
+      }
+    },
+    {
+      "name": "qwen3-coder:30b",
+      "role": "code_generator",
+      "system_prompt": "Based on the vision analysis, generate clean, functional code. If code was extracted, improve it. If UI was shown, implement it. If architecture was described, code it. Focus on best practices and production-ready code.",
+      "options": {
+        "temperature": 0.3
+      }
+    }
+  ],
+  "pass_strategy": "accumulate"
+}

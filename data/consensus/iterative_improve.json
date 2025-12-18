@@ -1,27 +1,27 @@
 {
-  "description": "Draft → Critique → Improve cycle",
+  "description": "Draft with llama → Critique with qwen3 → Improve with gpt",
   "type": "sequential",
   "models": [
     {
-      "name": "llama3.2:latest",
+      "name": "llama3.1:8b",
       "role": "drafter",
-      "system_prompt": "Create an initial draft response to the question. Focus on getting the main ideas down without worrying about perfection.",
+      "system_prompt": "Create an initial draft response to the question. Focus on getting the main ideas down.",
       "options": {
         "temperature": 0.7
       }
     },
     {
-      "name": "qwen2.5-coder:latest",
+      "name": "qwen3:8b",
       "role": "critic",
-      "system_prompt": "Critically analyze the draft. Identify weaknesses, missing information, logical gaps, unclear explanations, and areas for improvement. Be thorough and constructive in your critique.",
+      "system_prompt": "Critically analyze the draft. Identify weaknesses, missing information, logical gaps, unclear explanations, and areas for improvement. Be thorough and constructive.",
       "options": {
         "temperature": 0.6
       }
     },
     {
-      "name": "llama3.2:latest",
+      "name": "gpt-oss:20b",
       "role": "improver",
-      "system_prompt": "Based on the critique, create an improved final version that addresses all the identified issues. Maintain the strengths of the original while fixing weaknesses and adding missing information.",
+      "system_prompt": "Based on the critique, create an improved final version that addresses all identified issues. Maintain strengths while fixing weaknesses.",
       "options": {
         "temperature": 0.5
       }

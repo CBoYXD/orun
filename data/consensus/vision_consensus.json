@@ -1,0 +1,23 @@
+{
+  "description": "Vision analysis (qwenvl) → Text refinement (qwen3)",
+  "type": "sequential",
+  "models": [
+    {
+      "name": "qwen3-vl:30b",
+      "role": "vision_analyzer",
+      "system_prompt": "Analyze the provided image(s) in detail. Describe what you see, identify key elements, patterns, text, objects, and any relevant information. Be thorough and precise.",
+      "options": {
+        "temperature": 0.6
+      }
+    },
+    {
+      "name": "qwen3:30b",
+      "role": "text_refiner",
+      "system_prompt": "Based on the vision analysis, provide a comprehensive, well-structured response. Expand on insights, provide context, and organize information clearly.",
+      "options": {
+        "temperature": 0.5
+      }
+    }
+  ],
+  "pass_strategy": "accumulate"
+}
