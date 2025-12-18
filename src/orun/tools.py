@@ -3,21 +3,13 @@ import os
 import subprocess
 import urllib.request
 from html.parser import HTMLParser
+
 import arxiv
+from ddgs import DDGS
+from googleapiclient.discovery import build
+from googleapiclient.errors import HttpError
 
-# Web search imports
-try:
-    from googleapiclient.discovery import build
-    from googleapiclient.errors import HttpError
-    GOOGLE_SEARCH_AVAILABLE = True
-except ImportError:
-    GOOGLE_SEARCH_AVAILABLE = False
-
-try:
-    from ddgs import DDGS
-    DDGS_AVAILABLE = True
-except ImportError:
-    DDGS_AVAILABLE = False
+from orun.search_config import search_config
 
 
 # --- Helper for HTML Parsing ---
@@ -476,62 +468,48 @@ def web_search(query: str, max_results: int = 5) -> str:
         max_results = 5
 
     # Try Google Search first
-    try:
-        from orun.search_config import search_config
+    if search_config.has_google_credentials():
+        try:
+            service = build(
+                "customsearch",
+                "v1",
+                developerKey=search_config.google_api_key
+            )
 
-        if search_config.has_google_credentials() and GOOGLE_SEARCH_AVAILABLE:
-            try:
-                service = build(
-                    "customsearch",
-                    "v1",
-                    developerKey=search_config.google_api_key
-                )
+            result = service.cse().list(
+                q=query,
+                cx=search_config.google_cse_id,
+                num=max_results
+            ).execute()
 
-                result = service.cse().list(
-                    q=query,
-                    cx=search_config.google_cse_id,
-                    num=max_results
-                ).execute()
+            items = result.get("items", [])
+            if not items:
+                return f"No results found for query: {query}"
 
-                items = result.get("items", [])
-                if not items:
-                    return f"No results found for query: {query}"
+            output = [f"**Google Search Results for '{query}':**\n"]
+            for i, item in enumerate(items, 1):
+                title = item.get("title", "No title")
+                link = item.get("link", "")
+                snippet = item.get("snippet", "No description")
 
-                output = [f"**Google Search Results for '{query}':**\n"]
-                for i, item in enumerate(items, 1):
-                    title = item.get("title", "No title")
-                    link = item.get("link", "")
-                    snippet = item.get("snippet", "No description")
+                output.append(f"{i}. **{title}**")
+                output.append(f"   URL: {link}")
+                output.append(f"   {snippet}\n")
 
-                    output.append(f"{i}. **{title}**")
-                    output.append(f"   URL: {link}")
-                    output.append(f"   {snippet}\n")
+            return "\n".join(output)
 
-                return "\n".join(output)
-
-            except HttpError as e:
-                error_details = str(e)
-                if "quotaExceeded" in error_details or "dailyLimitExceeded" in error_details:
-                    # Quota exceeded, fall back to DuckDuckGo
-                    pass
-                else:
-                    return f"Google Search API error: {error_details}\n\nFalling back to DuckDuckGo..."
-            except Exception as e:
-                # Any other Google API error, fall back
+        except HttpError as e:
+            error_details = str(e)
+            if "quotaExceeded" in error_details or "dailyLimitExceeded" in error_details:
+                # Quota exceeded, fall back to DuckDuckGo
                 pass
-    except ImportError:
-        pass
+            else:
+                return f"Google Search API error: {error_details}\n\nFalling back to DuckDuckGo..."
+        except Exception:
+            # Any other Google API error, fall back
+            pass
 
     # Fallback to DuckDuckGo
-    if not DDGS_AVAILABLE:
-        return (
-            "Error: Web search is not available. "
-            "Google API is not configured and DuckDuckGo search library is not installed.\n\n"
-            "To configure:\n"
-            "1. Google: Add 'google_api_key' and 'google_cse_id' to ~/.orun/config.json\n"
-            "2. DuckDuckGo: Run 'uv sync' to install dependencies."
-        )
-
     try:
         ddgs = DDGS()
         results = list(ddgs.text(query, max_results=max_results))
