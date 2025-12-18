@@ -6,6 +6,7 @@ This file provides guidance to AI assistants when working with code in this repo
 
 orun-py is a Python CLI wrapper for interacting with local LLMs via Ollama. It features:
 - **Agent Capabilities**: Can read/write files, run shell commands, search files, and fetch URLs (with user confirmation).
+- **Consensus Systems**: Multiple models working together (sequential pipelines or parallel aggregation).
 - **Prompt Templates**: 200+ pre-defined templates for coding, analysis, writing, and more.
 - **Strategy Templates**: Chain-of-Thought, Tree-of-Thought, and other reasoning strategies.
 - **YOLO Mode**: Toggle confirmation-less execution mode for trusted commands.
@@ -78,10 +79,17 @@ orun shortcut <m> <s>      # Create shortcut for model
 orun history               # List recent conversations
 orun prompts               # List available prompt templates
 orun strategies            # List available strategy templates
+orun consensus             # List available consensus pipelines
+orun consensus-config      # Configure consensus pipelines
 
 # Context
 orun c <id>                # Continue conversation by ID
 orun last                  # Continue last conversation
+
+# Consensus (Multi-Model)
+orun "prompt" -C <pipeline>  # Use consensus pipeline
+orun "Write API" -C code_review              # Generate + review code
+orun "Analyze topic" -C multi_expert         # Multiple models + synthesis
 ```
 
 ## Prompt and Strategy Templates
@@ -117,6 +125,53 @@ In interactive chat, you can apply templates on-the-fly:
 orun prompts              # List all prompt templates
 orun strategies           # List all strategy templates
 ```
+
+## Consensus Systems
+
+Multiple models can work together to generate better responses:
+- **Sequential**: Models run one after another (pipeline)
+- **Parallel**: Models run independently, then results are synthesized
+
+### Default Consensus Pipelines
+
+7 built-in pipelines in `data/consensus/`:
+
+1. **best_of_three** - Same model 3x, show all results
+2. **code_review** - Generate → Review → Refine (3 models)
+3. **iterative_improve** - Draft → Critique → Improve (3 models)
+4. **multi_expert** - 3 models analyze, then synthesizer combines
+5. **research_paper** - Research → Outline → Write (3 models)
+6. **vision_consensus** - Vision analysis → Text refinement
+7. **vision_code** - Vision analysis → Code generation
+
+### Usage
+
+```bash
+# List pipelines
+orun consensus
+
+# Use consensus
+orun "Create REST API" -C code_review
+orun "Analyze topic" -C multi_expert
+orun "Explain this" -i -C vision_consensus
+
+# Create custom pipeline in ~/.orun/config.json
+{
+  "consensus": {
+    "pipelines": {
+      "my_workflow": {
+        "type": "sequential",
+        "models": [
+          {"name": "model1", "role": "analyzer"},
+          {"name": "model2", "role": "synthesizer"}
+        ]
+      }
+    }
+  }
+}
+```
+
+**Note**: User-defined pipelines override defaults with the same name.
 
 ## Agent Tools
 Tools are enabled by default for all chat/query modes. The AI can:

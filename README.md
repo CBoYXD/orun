@@ -5,6 +5,7 @@ A Python CLI Agent wrapper for Ollama. It combines chat capabilities with autono
 ## Features
 
 - **Autonomous Agent:** Can read/write files, run shell commands, search the web, and fetch URLs (with user confirmation).
+- **Consensus Systems:** Multiple models working together in sequential pipelines or parallel aggregation.
 - **Web Search:** Google Custom Search API (with DuckDuckGo fallback) for internet searches.
 - **URL Fetching:** Jina AI Reader converts web pages to clean markdown optimized for LLM analysis.
 - **arXiv Integration:** Search and retrieve academic papers directly from arXiv.
@@ -69,6 +70,55 @@ In chat mode, apply templates dynamically:
 /prompt analyze_paper
 /strategy cot
 ```
+
+### Consensus Systems (Multi-Model)
+Let multiple models collaborate for better results:
+
+```bash
+# List available consensus pipelines
+orun consensus
+
+# Code review: generate → review → refine
+orun "Create a REST API for users" -C code_review
+
+# Multi-expert: 3 models analyze, then synthesize
+orun "Compare React vs Vue" -C multi_expert
+
+# Vision + text: analyze image → refine response
+orun "Explain this diagram" -i -C vision_consensus
+
+# Vision + code: analyze UI → generate code
+orun "Convert this mockup to React" -i -C vision_code
+```
+
+**7 Built-in Pipelines:**
+1. **best_of_three** - Same model 3 times, show all results
+2. **code_review** - Generate code → Review → Refine (3 models)
+3. **iterative_improve** - Draft → Critique → Improve (3 models)
+4. **multi_expert** - 3 models analyze, then synthesizer combines
+5. **research_paper** - Research → Outline → Write (3 models)
+6. **vision_consensus** - Vision analysis → Text refinement
+7. **vision_code** - Vision analysis → Code generation
+
+**Create Custom Pipelines:**
+```bash
+# Edit ~/.orun/config.json
+{
+  "consensus": {
+    "pipelines": {
+      "my_workflow": {
+        "type": "sequential",
+        "models": [
+          {"name": "model1", "role": "analyzer"},
+          {"name": "model2", "role": "synthesizer"}
+        ]
+      }
+    }
+  }
+}
+```
+
+User-defined pipelines automatically override defaults with the same name.
 
 ### Analyze Screenshots
 Attach the most recent screenshot:
