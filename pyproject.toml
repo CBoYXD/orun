@@ -10,8 +10,8 @@ dependencies = [
     "rich>=14.2.0",
     "textual>=0.70.0",
     "arxiv>=2.3.1",
-    "google-api-python-client>=2.187.0",
     "ddgs>=9.10.0",
+    "langdetect>=1.0.9",
     "pillow>=12.0.0",
 ]
 
@@ -34,6 +34,7 @@ packages = ["src/orun"]
 [tool.hatch.build.targets.wheel.force-include]
 "data/prompts" = "orun/data/prompts"
 "data/strategies" = "orun/data/strategies"
+"data/consensus" = "orun/data/consensus"
 
 [tool.hatch.build.targets.sdist]
 include = [

@@ -6,10 +6,7 @@ from html.parser import HTMLParser
 
 import arxiv
 from ddgs import DDGS
-from googleapiclient.discovery import build
-from googleapiclient.errors import HttpError
-
-from orun.search_config import search_config
+from langdetect import detect, LangDetectException
 
 
 # --- Helper for HTML Parsing ---
@@ -459,65 +456,52 @@ def get_arxiv_paper(arxiv_id: str) -> str:
 
 def web_search(query: str, max_results: int = 5) -> str:
     """
-    Search the web for a query. First tries Google Custom Search API,
-    falls back to DuckDuckGo if Google fails or is not configured.
+    Search the web using DuckDuckGo with automatic language detection.
+    Detects query language and returns region-appropriate results.
     """
     try:
         max_results = min(int(max_results), 10)  # Limit to max 10 results
     except (ValueError, TypeError):
         max_results = 5
 
-    # Try Google Search first
-    if search_config.has_google_credentials():
+    # Detect language based on query text
+    def detect_language(text: str) -> str:
+        """Detect language and return appropriate DuckDuckGo region code."""
+        # Language code to DuckDuckGo region mapping
+        LANG_TO_REGION = {
+            'uk': 'ua-uk',  # Ukrainian
+            'ru': 'ru-ru',  # Russian
+            'en': 'us-en',  # English
+            'de': 'de-de',  # German
+            'fr': 'fr-fr',  # French
+            'es': 'es-es',  # Spanish
+            'it': 'it-it',  # Italian
+            'pt': 'pt-br',  # Portuguese
+            'pl': 'pl-pl',  # Polish
+            'nl': 'nl-nl',  # Dutch
+            'ja': 'jp-jp',  # Japanese
+            'ko': 'kr-kr',  # Korean
+            'zh-cn': 'cn-zh',  # Chinese Simplified
+            'zh-tw': 'tw-tzh',  # Chinese Traditional
+        }
+
         try:
-            service = build(
-                "customsearch",
-                "v1",
-                developerKey=search_config.google_api_key
-            )
+            lang = detect(text)
+            return LANG_TO_REGION.get(lang, 'us-en')  # Default to US English
+        except (LangDetectException, Exception):
+            # If detection fails, default to US English
+            return 'us-en'
 
-            result = service.cse().list(
-                q=query,
-                cx=search_config.google_cse_id,
-                num=max_results
-            ).execute()
-
-            items = result.get("items", [])
-            if not items:
-                return f"No results found for query: {query}"
-
-            output = [f"**Google Search Results for '{query}':**\n"]
-            for i, item in enumerate(items, 1):
-                title = item.get("title", "No title")
-                link = item.get("link", "")
-                snippet = item.get("snippet", "No description")
-
-                output.append(f"{i}. **{title}**")
-                output.append(f"   URL: {link}")
-                output.append(f"   {snippet}\n")
-
-            return "\n".join(output)
-
-        except HttpError as e:
-            error_details = str(e)
-            if "quotaExceeded" in error_details or "dailyLimitExceeded" in error_details:
-                # Quota exceeded, fall back to DuckDuckGo
-                pass
-            else:
-                return f"Google Search API error: {error_details}\n\nFalling back to DuckDuckGo..."
-        except Exception:
-            # Any other Google API error, fall back
-            pass
-
-    # Fallback to DuckDuckGo
+    # Search with DuckDuckGo
     try:
+        region = detect_language(query)
         ddgs = DDGS()
-        results = list(ddgs.text(query, max_results=max_results))
+        results = list(ddgs.text(query, region=region, max_results=max_results))
 
         if not results:
             return f"No results found for query: {query}"
 
-        output = [f"**DuckDuckGo Search Results for '{query}':**\n"]
+        output = [f"**Web Search Results for '{query}':**\n"]
         for i, result in enumerate(results, 1):
             title = result.get("title", "No title")
             link = result.get("href", result.get("link", ""))

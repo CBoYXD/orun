@@ -78,8 +78,6 @@ orun prompts               # List available prompt templates
 orun strategies            # List available strategy templates
 orun consensus             # List available consensus pipelines
 orun consensus-config      # Configure consensus pipelines
-orun config-search         # View Google Search API configuration
-orun config-search <key> <cse_id>  # Set Google Search API credentials
 
 # Context
 orun c <id>                # Continue conversation by ID
@@ -327,10 +325,11 @@ The AI can search the web and fetch web pages using two methods:
 
 #### 1. Agent Tool (Automatic)
 **web_search(query, max_results=5)**
-- Search the web using Google Custom Search API (with DuckDuckGo fallback)
+- Search the web using DuckDuckGo with automatic language detection
+- Automatically selects appropriate region based on query language (Ukrainian, Russian, English, etc.)
 - Returns titles, URLs, and snippets from search results
 - Max results: 10 per search
-- Automatically falls back to DuckDuckGo if Google API is not configured or quota exceeded
+- No configuration required, unlimited free searches
 - Example: `"Search the web for Python asyncio tutorials"`
 
 **fetch_url(url)**
@@ -358,42 +357,16 @@ In interactive chat mode, use these commands:
 ```
 
 These commands automatically:
-- **`/search`**: Searches the web using Google API (with DuckDuckGo fallback)
+- **`/search`**: Searches the web using DuckDuckGo with automatic language detection
 - **`/fetch`**: Fetches page content via Jina AI Reader (LLM-optimized)
 - Send results to AI for analysis
 - AI provides a comprehensive summary with key insights
 
-#### Configuration
-Web search uses Google Custom Search API by default, with DuckDuckGo as fallback.
-
-To configure Google Custom Search API (optional but recommended for better results):
-1. Get an API key from [Google Cloud Console](https://console.cloud.google.com/)
-2. Create a Custom Search Engine at [Google CSE](https://programmablesearchengine.google.com/)
-3. Configure using the CLI command:
-
-```bash
-# Set Google API credentials
-orun config-search YOUR_API_KEY YOUR_CSE_ID
-
-# View current configuration
-orun config-search
-```
-
-Alternatively, you can manually edit `~/.orun/config.json`:
-```json
-{
-  "search": {
-    "google_api_key": "YOUR_API_KEY_HERE",
-    "google_cse_id": "YOUR_CSE_ID_HERE"
-  }
-}
-```
-
-**Free Tier Limits:**
-- Google Custom Search: 100 queries/day (free)
-- DuckDuckGo: Unlimited (no API key required)
-
-If Google API is not configured or quota is exceeded, the system automatically falls back to DuckDuckGo.
+#### Features
+- **Automatic Language Detection**: Search queries are analyzed to detect the language (Ukrainian, Russian, English, etc.)
+- **Region-Appropriate Results**: DuckDuckGo region parameter is automatically set based on detected language
+- **No Configuration Required**: Works out of the box with unlimited free searches
+- **Multiple Languages Supported**: Ukrainian (ua-uk), Russian (ru-ru), English (us-en), German (de-de), French (fr-fr), Spanish (es-es), Italian (it-it), Portuguese (pt-br), Polish (pl-pl), Dutch (nl-nl), Japanese (jp-jp), Korean (kr-kr), Chinese (cn-zh, tw-tzh)
 
 ## YOLO Mode (No Confirmations)
 

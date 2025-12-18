@@ -157,7 +157,7 @@ The `/arxiv` command automatically detects whether you're searching or requestin
 ### Web Search & URL Fetching
 Search the web or fetch specific web pages in interactive chat:
 
-**Web Search (Google/DuckDuckGo):**
+**Web Search (DuckDuckGo with Language Detection):**
 ```bash
 orun chat
 > /search Python asyncio tutorials
@@ -171,20 +171,11 @@ orun chat
 > /fetch github.com/user/repo
 ```
 
-**Configure Google Custom Search API (optional):**
-```bash
-# Get API key from https://console.cloud.google.com/
-# Get CSE ID from https://programmablesearchengine.google.com/
-orun config-search YOUR_API_KEY YOUR_CSE_ID
-
-# View current configuration
-orun config-search
-```
-
 Features:
-- **Web Search**: Google Custom Search API (100 free queries/day) with DuckDuckGo fallback
+- **Web Search**: DuckDuckGo with automatic language detection for region-appropriate results
+- **Language Detection**: Automatically detects query language (Ukrainian, Russian, English, etc.) and sets appropriate region
 - **URL Fetching**: Jina AI Reader converts pages to clean markdown optimized for LLM analysis
-- **Automatic Fallback**: If Google quota exceeded, automatically uses DuckDuckGo
+- **No Configuration Required**: Works out of the box with unlimited free searches
 - **AI Analysis**: All results are analyzed and summarized by the AI
 
 The AI can also autonomously call `web_search()` and `fetch_url()` tools during conversations.

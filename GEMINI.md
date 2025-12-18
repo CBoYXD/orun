@@ -178,7 +178,8 @@ Tools are enabled by default for all chat/query modes. The AI can:
 - `read_file`, `write_file`
 - `list_directory`, `search_files`
 - `run_shell_command`
-- `fetch_url`
+- `fetch_url`, `web_search` - Fetch web pages and search the internet (DuckDuckGo with automatic language detection)
+- `search_arxiv`, `get_arxiv_paper` - Search and retrieve academic papers from arXiv
 User confirmation is required for execution.
 
 ## YOLO Mode (No Confirmations)

@@ -79,19 +79,6 @@ def main():
 
             return
 
-        if cmd == "config-search":
-            if len(sys.argv) == 2:
-                # Show current config
-                commands.cmd_config_search()
-            elif len(sys.argv) == 4:
-                # Set config with api_key and cse_id
-                commands.cmd_config_search(sys.argv[2], sys.argv[3])
-            else:
-                print_warning("Usage: orun config-search <api_key> <cse_id>")
-                print_warning("   or: orun config-search  (to view current config)")
-
-            return
-
         if cmd == "arxiv":
             if len(sys.argv) < 3:
                 print_warning("Usage: orun arxiv <query or arxiv_id>")
@@ -301,7 +288,6 @@ Commands:
   history           List recent conversations
   prompts           List available prompt templates
   strategies        List available strategy templates
-  config-search     Configure Google Search API credentials
   c <id>            Continue conversation by ID
   last              Continue last conversation
 
