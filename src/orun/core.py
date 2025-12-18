@@ -8,19 +8,22 @@ from orun.utils import Colors, print_error, print_warning
 from orun.yolo import yolo_mode
 
 
-def handle_ollama_stream(stream) -> str:
+def handle_ollama_stream(stream, silent: bool = False) -> str:
     """Prints the stream and returns the full response."""
     full_response = ""
     try:
         for chunk in stream:
             content = chunk["message"]["content"]
-            console.print(content, end="", flush=True, style=Colors.GREY)
+            if not silent:
+                console.print(content, end="", flush=True, style=Colors.GREY)
             full_response += content
     except Exception as e:
-        console.print()  # Newline
+        if not silent:
+            console.print()  # Newline
         print_error(f"Stream Error: {e}")
     finally:
-        console.print()
+        if not silent:
+            console.print()
     return full_response
 
 
@@ -120,6 +123,7 @@ def run_single_shot(
     strategy_template: str | None = None,
     file_paths: list[str] | None = None,
     stdin_content: str | None = None,
+    output_file: str | None = None,
 ):
     """Handles a single query to the model."""
     utils.ensure_ollama_running()
@@ -163,6 +167,9 @@ def run_single_shot(
     # Tool definitions
     tool_defs = tools.TOOL_DEFINITIONS if use_tools else None
 
+    # Variable to hold the final output
+    final_output = ""
+
     try:
         # If using tools, we can't easily stream the first response because we need to parse JSON first
         if use_tools:
@@ -179,23 +186,39 @@ def run_single_shot(
                 execute_tool_calls(msg["tool_calls"], messages)
 
                 # Follow up with the tool outputs
-                console.print(
-                    f"🤖 [{model_name}] Processing tool output...", style=Colors.CYAN
-                )
+                if not output_file:
+                    console.print(
+                        f"🤖 [{model_name}] Processing tool output...", style=Colors.CYAN
+                    )
                 stream = ollama.chat(model=model_name, messages=messages, stream=True)
-                final_response = handle_ollama_stream(stream)
+                final_response = handle_ollama_stream(stream, silent=bool(output_file))
                 if final_response:
                     db.add_message(conversation_id, "assistant", final_response)
+                    final_output = final_response
             else:
                 # Normal response
-                console.print(msg["content"])
+                if not output_file:
+                    console.print(msg["content"])
                 db.add_message(conversation_id, "assistant", msg["content"])
+                final_output = msg["content"]
         else:
             # Standard streaming
             stream = ollama.chat(model=model_name, messages=messages, stream=True)
-            response = handle_ollama_stream(stream)
+            response = handle_ollama_stream(stream, silent=bool(output_file))
             if response:
                 db.add_message(conversation_id, "assistant", response)
+                final_output = response
+
+        # Save to file if requested
+        if output_file and final_output:
+            try:
+                from pathlib import Path
+                output_path = Path(output_file)
+                output_path.parent.mkdir(parents=True, exist_ok=True)
+                output_path.write_text(final_output, encoding='utf-8')
+                console.print(f"\n✅ Output saved to: {output_file}", style=Colors.GREEN)
+            except Exception as e:
+                print_error(f"Failed to save output to file: {e}")
 
     except Exception as e:
         console.print()

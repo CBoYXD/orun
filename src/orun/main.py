@@ -281,6 +281,9 @@ def main():
         "-s", "--strategy", dest="use_strategy", help="Use a specific strategy template"
     )
     parser.add_argument(
+        "-o", "--output", type=str, help="Save output to file instead of printing to console"
+    )
+    parser.add_argument(
         "--yolo", action="store_true", help="Enable YOLO mode (no confirmations)"
     )
 
@@ -339,6 +342,7 @@ def main():
         strategy_template=args.use_strategy,
         file_paths=file_paths,
         stdin_content=stdin_content,
+        output_file=args.output,
     )
 
 
