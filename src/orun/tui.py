@@ -341,7 +341,8 @@ class ChatScreen(Screen):
         """Available slash commands and their descriptions."""
         return [
             ("/run <cmd>", "Run a shell command"),
-            ("/search <url|query>", "Search the web or fetch a specific URL"),
+            ("/search <query>", "Search the web (Google/DuckDuckGo)"),
+            ("/fetch <url>", "Fetch and parse a web page"),
             ("/arxiv <query|id>", "Search arXiv or get paper details"),
             ("/prompt <name...>", "Activate prompt templates"),
             ("/prompt remove <name>", "Remove a prompt template"),
@@ -468,78 +469,73 @@ class ChatScreen(Screen):
         elif cmd == "/search":
             if not arg:
                 self.chat_container.mount(
-                    Static("[yellow]Usage: /search <url|query>[/]", classes="status")
+                    Static("[yellow]Usage: /search <query>[/]", classes="status")
                 )
             else:
-                input_str = arg.strip()
-                # Determine if it's a URL or a search query
-                is_url = (
-                    input_str.startswith(("http://", "https://"))
-                    or input_str.startswith("www.")
-                    or ("." in input_str and " " not in input_str and len(input_str.split(".")) >= 2)
+                query = arg.strip()
+                self.chat_container.mount(
+                    Static(f"[cyan]Searching the web for '{query}'...[/]", classes="status")
                 )
-
-                if is_url:
-                    # Fetch specific URL
-                    url = input_str
-                    if not url.startswith(("http://", "https://")):
-                        url = f"https://{url}"
+                self.chat_container.scroll_end()
+                result = await asyncio.to_thread(tools.web_search, query, 5)
+                result_trimmed = result.strip()
+                if result_trimmed.lower().startswith("error"):
                     self.chat_container.mount(
-                        Static(f"[cyan]Fetching {url} ...[/]", classes="status")
+                        Static(result_trimmed, classes="status")
                     )
-                    self.chat_container.scroll_end()
-                    result = await asyncio.to_thread(tools.fetch_url, url)
-                    result_trimmed = result.strip()
-                    if result_trimmed.lower().startswith("error"):
-                        self.chat_container.mount(
-                            Static(result_trimmed, classes="status")
-                        )
-                    else:
-                        self.chat_container.mount(
-                            Static("[cyan]Content fetched. Asking AI to analyze...[/]", classes="status")
-                        )
-                        analysis_payload = (
-                            f"{self.search_analysis_prompt}\n\n"
-                            f"Source URL: {url}\n\n"
-                            "-----BEGIN DOCUMENT-----\n"
-                            f"{result_trimmed}\n"
-                            "-----END DOCUMENT-----"
-                        )
-                        self.messages.append({"role": "user", "content": analysis_payload})
-                        db.add_message(
-                            self.conversation_id, "hidden_user", analysis_payload
-                        )
-                        trigger_model = True
-                        self.process_ollama_turn()
                 else:
-                    # Web search query
                     self.chat_container.mount(
-                        Static(f"[cyan]Searching the web for '{input_str}'...[/]", classes="status")
+                        Static("[cyan]Search results fetched. Asking AI to analyze...[/]", classes="status")
                     )
-                    self.chat_container.scroll_end()
-                    result = await asyncio.to_thread(tools.web_search, input_str, 5)
-                    result_trimmed = result.strip()
-                    if result_trimmed.lower().startswith("error"):
-                        self.chat_container.mount(
-                            Static(result_trimmed, classes="status")
-                        )
-                    else:
-                        self.chat_container.mount(
-                            Static("[cyan]Search results fetched. Asking AI to analyze...[/]", classes="status")
-                        )
-                        analysis_payload = (
-                            f"{self.search_analysis_prompt}\n\n"
-                            f"Search Query: {input_str}\n\n"
-                            "-----BEGIN SEARCH RESULTS-----\n"
-                            f"{result_trimmed}\n"
-                            "-----END SEARCH RESULTS-----"
-                        )
-                        self.messages.append({"role": "user", "content": analysis_payload})
-                        db.add_message(
-                            self.conversation_id, "hidden_user", analysis_payload
-                        )
-                        trigger_model = True
-                        self.process_ollama_turn()
+                    analysis_payload = (
+                        f"{self.search_analysis_prompt}\n\n"
+                        f"Search Query: {query}\n\n"
+                        "-----BEGIN SEARCH RESULTS-----\n"
+                        f"{result_trimmed}\n"
+                        "-----END SEARCH RESULTS-----"
+                    )
+                    self.messages.append({"role": "user", "content": analysis_payload})
+                    db.add_message(
+                        self.conversation_id, "hidden_user", analysis_payload
+                    )
+                    trigger_model = True
+                    self.process_ollama_turn()
+        elif cmd == "/fetch":
+            if not arg:
+                self.chat_container.mount(
+                    Static("[yellow]Usage: /fetch <url>[/]", classes="status")
+                )
+            else:
+                url = arg.strip()
+                if not url.startswith(("http://", "https://")):
+                    url = f"https://{url}"
+                self.chat_container.mount(
+                    Static(f"[cyan]Fetching {url} ...[/]", classes="status")
+                )
+                self.chat_container.scroll_end()
+                result = await asyncio.to_thread(tools.fetch_url, url)
+                result_trimmed = result.strip()
+                if result_trimmed.lower().startswith("error"):
+                    self.chat_container.mount(
+                        Static(result_trimmed, classes="status")
+                    )
+                else:
+                    self.chat_container.mount(
+                        Static("[cyan]Content fetched. Asking AI to analyze...[/]", classes="status")
+                    )
+                    analysis_payload = (
+                        f"{self.search_analysis_prompt}\n\n"
+                        f"Source URL: {url}\n\n"
+                        "-----BEGIN DOCUMENT-----\n"
+                        f"{result_trimmed}\n"
+                        "-----END DOCUMENT-----"
+                    )
+                    self.messages.append({"role": "user", "content": analysis_payload})
+                    db.add_message(
+                        self.conversation_id, "hidden_user", analysis_payload
+                    )
+                    trigger_model = True
+                    self.process_ollama_turn()
         elif cmd == "/arxiv":
             if not arg:
                 self.chat_container.mount(

@@ -187,24 +187,28 @@ The AI can search the web and fetch web pages using two methods:
 - Returns page title and formatted content optimized for LLM analysis
 - Example: `"Fetch https://example.com"`
 
-#### 2. TUI Command (Interactive Chat)
-In interactive chat mode, use the `/search` command:
+#### 2. TUI Commands (Interactive Chat)
+In interactive chat mode, use these commands:
 
+**Web Search:**
 ```bash
-# Search the web for a query
+# Search the web (Google/DuckDuckGo)
 /search Python programming tutorials
-
-# Fetch a specific URL
-/search https://example.com
-/search example.com
+/search latest AI news
 ```
 
-The `/search` command automatically:
-- Detects if input is a URL or a search query
-- For URLs: Fetches and parses the page content
-- For queries: Searches the web using Google/DuckDuckGo
-- Sends results to AI for analysis
-- AI provides a summary with key insights
+**Fetch URL:**
+```bash
+# Fetch and parse a specific web page
+/fetch https://example.com
+/fetch github.com/user/repo
+```
+
+These commands automatically:
+- **`/search`**: Searches the web using Google API (with DuckDuckGo fallback)
+- **`/fetch`**: Fetches page content via Jina AI Reader (LLM-optimized)
+- Send results to AI for analysis
+- AI provides a comprehensive summary with key insights
 
 #### Configuration
 Web search uses Google Custom Search API by default, with DuckDuckGo as fallback.

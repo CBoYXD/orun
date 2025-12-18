@@ -4,7 +4,9 @@ A Python CLI Agent wrapper for Ollama. It combines chat capabilities with autono
 
 ## Features
 
-- **Autonomous Agent:** Can read/write files, run shell commands, and fetch URLs (with user confirmation).
+- **Autonomous Agent:** Can read/write files, run shell commands, search the web, and fetch URLs (with user confirmation).
+- **Web Search:** Google Custom Search API (with DuckDuckGo fallback) for internet searches.
+- **URL Fetching:** Jina AI Reader converts web pages to clean markdown optimized for LLM analysis.
 - **arXiv Integration:** Search and retrieve academic papers directly from arXiv.
 - **Screenshot Analysis:** Auto-detects and attaches recent screenshots from your Pictures folder.
 - **Prompt Templates:** 200+ pre-defined templates for coding, analysis, writing, and more.
@@ -101,6 +103,41 @@ The AI can autonomously:
 - Find relevant literature for your projects
 
 The `/arxiv` command automatically detects whether you're searching or requesting a specific paper, fetches the data, and provides AI analysis without showing raw output.
+
+### Web Search & URL Fetching
+Search the web or fetch specific web pages in interactive chat:
+
+**Web Search (Google/DuckDuckGo):**
+```bash
+orun chat
+> /search Python asyncio tutorials
+> /search latest news about AI
+```
+
+**Fetch URL (via Jina AI Reader):**
+```bash
+orun chat
+> /fetch https://example.com
+> /fetch github.com/user/repo
+```
+
+**Configure Google Custom Search API (optional):**
+```bash
+# Get API key from https://console.cloud.google.com/
+# Get CSE ID from https://programmablesearchengine.google.com/
+orun config-search YOUR_API_KEY YOUR_CSE_ID
+
+# View current configuration
+orun config-search
+```
+
+Features:
+- **Web Search**: Google Custom Search API (100 free queries/day) with DuckDuckGo fallback
+- **URL Fetching**: Jina AI Reader converts pages to clean markdown optimized for LLM analysis
+- **Automatic Fallback**: If Google quota exceeded, automatically uses DuckDuckGo
+- **AI Analysis**: All results are analyzed and summarized by the AI
+
+The AI can also autonomously call `web_search()` and `fetch_url()` tools during conversations.
 
 ### Model Management
 Sync models from Ollama:
