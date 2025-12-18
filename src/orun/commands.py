@@ -1,4 +1,4 @@
-from orun import db, prompts_manager
+from orun import db, prompts_manager, tools
 from orun.rich_utils import console, create_table, print_table
 from orun.search_config import search_config
 from orun.tui import OrunApp
@@ -206,3 +206,41 @@ def cmd_config_search(api_key: str = None, cse_id: str = None):
         console.print("  Fallback to DuckDuckGo when quota exceeded", style=Colors.DIM)
     else:
         print_error("Failed to save Google Search API credentials.")
+
+
+def cmd_arxiv(query: str):
+    """Search or fetch arXiv papers."""
+    # Detect if it's an arXiv ID or a search query
+    # arXiv IDs are typically in format: YYMM.NNNNN or archive/YYYYNNNNN
+    query = query.strip()
+
+    # Check if it looks like an arXiv ID
+    is_arxiv_id = False
+    if "/" in query or "." in query:
+        # Could be an ID like "2301.07041" or "cs/0001001"
+        # or a URL like "https://arxiv.org/abs/2301.07041"
+        if "arxiv.org" in query or query.replace(".", "").replace("/", "").replace("v", "").isdigit():
+            is_arxiv_id = True
+
+    console.print(f"🔍 {'Fetching arXiv paper' if is_arxiv_id else 'Searching arXiv'}...", style=Colors.CYAN)
+
+    if is_arxiv_id:
+        result = tools.get_arxiv_paper(query)
+    else:
+        result = tools.search_arxiv(query)
+
+    console.print("\n" + result, style=Colors.GREY)
+
+
+def cmd_search(query: str):
+    """Search the web."""
+    console.print(f"🔍 Searching the web for: {query}", style=Colors.CYAN)
+    result = tools.web_search(query)
+    console.print("\n" + result, style=Colors.GREY)
+
+
+def cmd_fetch(url: str):
+    """Fetch and display content from a URL."""
+    console.print(f"🌐 Fetching: {url}", style=Colors.CYAN)
+    result = tools.fetch_url(url)
+    console.print("\n" + result, style=Colors.GREY)

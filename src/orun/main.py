@@ -91,6 +91,30 @@ def main():
 
             return
 
+        if cmd == "arxiv":
+            if len(sys.argv) < 3:
+                print_warning("Usage: orun arxiv <query or arxiv_id>")
+                return
+
+            commands.cmd_arxiv(" ".join(sys.argv[2:]))
+            return
+
+        if cmd == "search":
+            if len(sys.argv) < 3:
+                print_warning("Usage: orun search <query>")
+                return
+
+            commands.cmd_search(" ".join(sys.argv[2:]))
+            return
+
+        if cmd == "fetch":
+            if len(sys.argv) < 3:
+                print_warning("Usage: orun fetch <url>")
+                return
+
+            commands.cmd_fetch(sys.argv[2])
+            return
+
         if cmd == "chat":
             parser = argparse.ArgumentParser(prog="orun chat")
 
@@ -240,7 +264,7 @@ def main():
     # Default Query Mode (Single Shot)
     parser = argparse.ArgumentParser(
         description="AI CLI wrapper for Ollama",
-        usage="orun [command] [prompt] [options]\n\nCommands:\n  chat            Start interactive chat session\n  models          List available models\n  refresh         Sync models from Ollama\n  shortcut        Change model shortcut\n  set-active      Set active model\n  history         List recent conversations\n  prompts         List available prompt templates\n  strategies      List available strategy templates\n  config-search   Configure Google Search API credentials\n  c <id>          Continue conversation by ID\n  last            Continue last conversation\n\nSingle-shot options:\n  -p <prompt>     Use a specific prompt template\n  -s <strategy>   Use a specific strategy template\n  -f <file>       Add file(s) as context (supports globs)",
+        usage="orun [command] [prompt] [options]\n\nCommands:\n  chat            Start interactive chat session\n  arxiv <query>   Search or fetch arXiv papers\n  search <query>  Search the web\n  fetch <url>     Fetch and display web content\n  models          List available models\n  refresh         Sync models from Ollama\n  shortcut        Change model shortcut\n  set-active      Set active model\n  history         List recent conversations\n  prompts         List available prompt templates\n  strategies      List available strategy templates\n  config-search   Configure Google Search API credentials\n  c <id>          Continue conversation by ID\n  last            Continue last conversation\n\nSingle-shot options:\n  -p <prompt>     Use a specific prompt template\n  -s <strategy>   Use a specific strategy template\n  -f <file>       Add file(s) as context (supports globs)",
     )
     parser.add_argument("prompt", nargs="*", help="Text prompt")
     parser.add_argument("-m", "--model", default="default", help="Model alias or name")
