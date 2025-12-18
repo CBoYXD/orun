@@ -32,7 +32,9 @@ class SearchConfig:
                 # Create default config with search section
                 self.create_default_search_config()
         except Exception as e:
-            console.print(f"Warning: Could not load search config: {e}", style=Colors.YELLOW)
+            console.print(
+                f"Warning: Could not load search config: {e}", style=Colors.YELLOW
+            )
 
     def create_default_search_config(self):
         """Add search section to config if it doesn't exist."""
@@ -47,7 +49,7 @@ class SearchConfig:
                 config["search"] = {
                     "google_api_key": None,
                     "google_cse_id": None,
-                    "_comment": "Get Google Custom Search API key from https://developers.google.com/custom-search/v1/overview"
+                    "_comment": "Get Google Custom Search API key from https://developers.google.com/custom-search/v1/overview",
                 }
 
                 with open(self.config_path, "w") as f:
@@ -71,7 +73,7 @@ class SearchConfig:
             config["search"] = {
                 "google_api_key": api_key,
                 "google_cse_id": cse_id,
-                "_comment": "Google Custom Search API credentials"
+                "_comment": "Google Custom Search API credentials",
             }
 
             with open(self.config_path, "w") as f:

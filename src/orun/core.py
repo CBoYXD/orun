@@ -161,12 +161,20 @@ def run_single_shot(
     # Add clipboard content if provided
     if clipboard_content:
         clipboard_prefix = "--- Input from clipboard ---\n"
-        full_prompt = f"{clipboard_prefix}{clipboard_content}\n\n{full_prompt}" if full_prompt else f"{clipboard_prefix}{clipboard_content}"
+        full_prompt = (
+            f"{clipboard_prefix}{clipboard_content}\n\n{full_prompt}"
+            if full_prompt
+            else f"{clipboard_prefix}{clipboard_content}"
+        )
 
     # Add stdin content if provided (pipe input)
     if stdin_content:
         stdin_prefix = "--- Input from stdin ---\n"
-        full_prompt = f"{stdin_prefix}{stdin_content}\n\n{full_prompt}" if full_prompt else f"{stdin_prefix}{stdin_content}"
+        full_prompt = (
+            f"{stdin_prefix}{stdin_content}\n\n{full_prompt}"
+            if full_prompt
+            else f"{stdin_prefix}{stdin_content}"
+        )
 
     # Add directory context if provided
     if dir_context:
@@ -176,7 +184,9 @@ def run_single_shot(
     if file_paths:
         file_context = utils.read_file_context(file_paths)
         if file_context:
-            full_prompt = f"{file_context}\n\n{full_prompt}" if full_prompt else file_context
+            full_prompt = (
+                f"{file_context}\n\n{full_prompt}" if full_prompt else file_context
+            )
 
     db.add_message(conversation_id, "user", full_prompt, image_paths or None)
 
@@ -184,7 +194,9 @@ def run_single_shot(
     messages = []
     if system_prompt:
         messages.append({"role": "system", "content": system_prompt})
-    messages.append({"role": "user", "content": full_prompt, "images": image_paths or None})
+    messages.append(
+        {"role": "user", "content": full_prompt, "images": image_paths or None}
+    )
 
     # Tool definitions
     tool_defs = tools.TOOL_DEFINITIONS if use_tools else None
@@ -200,7 +212,7 @@ def run_single_shot(
                 messages=messages,
                 tools=tool_defs,
                 stream=False,
-                options=model_options
+                options=model_options,
             )
             msg = response["message"]
 
@@ -214,15 +226,18 @@ def run_single_shot(
                 # Follow up with the tool outputs
                 if not output_file and not quiet:
                     console.print(
-                        f"🤖 [{model_name}] Processing tool output...", style=Colors.CYAN
+                        f"🤖 [{model_name}] Processing tool output...",
+                        style=Colors.CYAN,
                     )
                 stream = ollama.chat(
                     model=model_name,
                     messages=messages,
                     stream=True,
-                    options=model_options
+                    options=model_options,
                 )
-                final_response = handle_ollama_stream(stream, silent=(bool(output_file) or quiet))
+                final_response = handle_ollama_stream(
+                    stream, silent=(bool(output_file) or quiet)
+                )
                 if final_response:
                     db.add_message(conversation_id, "assistant", final_response)
                     final_output = final_response
@@ -235,10 +250,7 @@ def run_single_shot(
         else:
             # Standard streaming
             stream = ollama.chat(
-                model=model_name,
-                messages=messages,
-                stream=True,
-                options=model_options
+                model=model_name, messages=messages, stream=True, options=model_options
             )
             response = handle_ollama_stream(stream, silent=(bool(output_file) or quiet))
             if response:
@@ -250,9 +262,11 @@ def run_single_shot(
             try:
                 output_path = Path(output_file)
                 output_path.parent.mkdir(parents=True, exist_ok=True)
-                output_path.write_text(final_output, encoding='utf-8')
+                output_path.write_text(final_output, encoding="utf-8")
                 if not quiet:
-                    console.print(f"\n✅ Output saved to: {output_file}", style=Colors.GREEN)
+                    console.print(
+                        f"\n✅ Output saved to: {output_file}", style=Colors.GREEN
+                    )
             except Exception as e:
                 print_error(f"Failed to save output to file: {e}")
 
@@ -293,7 +307,10 @@ def run_continue_shot(
         print_error(f"Conversation #{conversation_id} not found.")
         return
 
-    console.print(f"🤖 [{model_name}] Continuing conversation #{conversation_id}...", style=Colors.CYAN)
+    console.print(
+        f"🤖 [{model_name}] Continuing conversation #{conversation_id}...",
+        style=Colors.CYAN,
+    )
 
     # Build messages from history
     messages = []
@@ -306,7 +323,13 @@ def run_continue_shot(
     # Add new user message
     if user_prompt or image_paths:
         db.add_message(conversation_id, "user", user_prompt or "", image_paths or None)
-        messages.append({"role": "user", "content": user_prompt or "", "images": image_paths or None})
+        messages.append(
+            {
+                "role": "user",
+                "content": user_prompt or "",
+                "images": image_paths or None,
+            }
+        )
 
     # Tool definitions
     tool_defs = tools.TOOL_DEFINITIONS if use_tools else None
@@ -322,7 +345,7 @@ def run_continue_shot(
                 messages=messages,
                 tools=tool_defs,
                 stream=False,
-                options=model_options
+                options=model_options,
             )
             msg = response["message"]
 
@@ -336,13 +359,14 @@ def run_continue_shot(
                 # Follow up with the tool outputs
                 if not output_file:
                     console.print(
-                        f"🤖 [{model_name}] Processing tool output...", style=Colors.CYAN
+                        f"🤖 [{model_name}] Processing tool output...",
+                        style=Colors.CYAN,
                     )
                 stream = ollama.chat(
                     model=model_name,
                     messages=messages,
                     stream=True,
-                    options=model_options
+                    options=model_options,
                 )
                 final_response = handle_ollama_stream(stream, silent=bool(output_file))
                 if final_response:
@@ -357,10 +381,7 @@ def run_continue_shot(
         else:
             # Standard streaming
             stream = ollama.chat(
-                model=model_name,
-                messages=messages,
-                stream=True,
-                options=model_options
+                model=model_name, messages=messages, stream=True, options=model_options
             )
             response = handle_ollama_stream(stream, silent=bool(output_file))
             if response:
@@ -372,8 +393,10 @@ def run_continue_shot(
             try:
                 output_path = Path(output_file)
                 output_path.parent.mkdir(parents=True, exist_ok=True)
-                output_path.write_text(final_output, encoding='utf-8')
-                console.print(f"\n✅ Output saved to: {output_file}", style=Colors.GREEN)
+                output_path.write_text(final_output, encoding="utf-8")
+                console.print(
+                    f"\n✅ Output saved to: {output_file}", style=Colors.GREEN
+                )
             except Exception as e:
                 print_error(f"Failed to save output to file: {e}")
 

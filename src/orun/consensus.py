@@ -6,15 +6,16 @@ Supports:
 - Parallel aggregation: Models run independently, then results are synthesized
 """
 
+from typing import Dict, List, Optional
+
 import ollama
-from typing import Optional, Dict, List
 
 from orun import db, tools, utils
+from orun.consensus_config import consensus_config
+from orun.core import execute_tool_calls, handle_ollama_stream
+from orun.models_config import models_config
 from orun.rich_utils import console
 from orun.utils import Colors, print_error
-from orun.consensus_config import consensus_config
-from orun.models_config import models_config
-from orun.core import execute_tool_calls, handle_ollama_stream
 
 
 def run_consensus(
@@ -36,7 +37,9 @@ def run_consensus(
     # Get pipeline configuration
     pipeline = consensus_config.get_pipeline(pipeline_name)
     if not pipeline:
-        available = ", ".join([p["name"] for p in consensus_config.list_pipelines()[:5]])
+        available = ", ".join(
+            [p["name"] for p in consensus_config.list_pipelines()[:5]]
+        )
         print_error(f"Pipeline '{pipeline_name}' not found.")
         console.print(f"Available pipelines: {available}...", style=Colors.GREY)
         console.print("Run 'orun consensus' to see all pipelines", style=Colors.GREY)
@@ -46,7 +49,7 @@ def run_consensus(
     available_models = models_config.get_models()
     is_valid, error_msg = consensus_config.validate_pipeline(pipeline, available_models)
     if not is_valid:
-        print_error(f"Pipeline validation failed:")
+        print_error("Pipeline validation failed:")
         console.print(error_msg, style=Colors.RED)
         return ""
 
@@ -99,12 +102,10 @@ def run_sequential_consensus(
     Each model can use tools and see previous models' outputs.
     """
     console.print(
-        f"\n🔗 Starting consensus pipeline: {pipeline_name}",
-        style=Colors.CYAN
+        f"\n🔗 Starting consensus pipeline: {pipeline_name}", style=Colors.CYAN
     )
     console.print(
-        f"   Type: Sequential | Models: {len(pipeline['models'])}",
-        style=Colors.GREY
+        f"   Type: Sequential | Models: {len(pipeline['models'])}", style=Colors.GREY
     )
 
     models_config = pipeline["models"]
@@ -130,7 +131,7 @@ def run_sequential_consensus(
         # Print step header
         console.print(
             f"\n[Step {step_idx}/{total_steps}: {role} - {model_name}]",
-            style=Colors.MAGENTA
+            style=Colors.MAGENTA,
         )
 
         # Build messages for this step
@@ -138,25 +139,17 @@ def run_sequential_consensus(
 
         # Add step-specific system prompt if provided
         if step_system_prompt:
-            step_messages.append({
-                "role": "system",
-                "content": step_system_prompt
-            })
+            step_messages.append({"role": "system", "content": step_system_prompt})
         elif system_prompt and step_idx == 1:
             # Use global system prompt for first step if no step-specific one
-            step_messages.append({
-                "role": "system",
-                "content": system_prompt
-            })
+            step_messages.append({"role": "system", "content": system_prompt})
 
         # Determine context to pass based on strategy
         if step_idx == 1:
             # First step: just the user prompt
-            step_messages.append({
-                "role": "user",
-                "content": user_prompt,
-                "images": image_paths
-            })
+            step_messages.append(
+                {"role": "user", "content": user_prompt, "images": image_paths}
+            )
         else:
             # Subsequent steps: apply pass_strategy
             if pass_strategy == "accumulate":
@@ -172,22 +165,25 @@ def run_sequential_consensus(
                             last_assistant = msg
                             break
                     if last_assistant:
-                        step_messages.append({
-                            "role": "user",
-                            "content": f"Previous step output:\n\n{last_assistant['content']}"
-                        })
+                        step_messages.append(
+                            {
+                                "role": "user",
+                                "content": f"Previous step output:\n\n{last_assistant['content']}",
+                            }
+                        )
             elif pass_strategy == "synthesis":
                 # Synthesize all previous outputs
                 assistant_outputs = [
-                    msg["content"] for msg in all_messages
-                    if msg["role"] == "assistant"
+                    msg["content"] for msg in all_messages if msg["role"] == "assistant"
                 ]
                 if assistant_outputs:
                     synthesis = "\n\n---\n\n".join(assistant_outputs)
-                    step_messages.append({
-                        "role": "user",
-                        "content": f"Previous steps output:\n\n{synthesis}\n\nNow proceed with your role."
-                    })
+                    step_messages.append(
+                        {
+                            "role": "user",
+                            "content": f"Previous steps output:\n\n{synthesis}\n\nNow proceed with your role.",
+                        }
+                    )
 
         # Execute this step
         try:
@@ -199,7 +195,7 @@ def run_sequential_consensus(
                 messages=step_messages,
                 tools=tool_defs,
                 stream=False,
-                options=step_options
+                options=step_options,
             )
 
             msg = response["message"]
@@ -220,7 +216,7 @@ def run_sequential_consensus(
                     model=model_name,
                     messages=step_messages,
                     stream=True,
-                    options=step_options
+                    options=step_options,
                 )
 
                 step_output = handle_ollama_stream(follow_up_response)
@@ -230,24 +226,24 @@ def run_sequential_consensus(
 
             # Save step output to database
             step_label = f"[{role} - {model_name}]"
-            db.add_message(
-                conversation_id,
-                "assistant",
-                f"{step_label}\n{step_output}"
-            )
+            db.add_message(conversation_id, "assistant", f"{step_label}\n{step_output}")
 
             # Add to message history
-            all_messages.append({
-                "role": "user",
-                "content": user_prompt if step_idx == 1 else step_output,
-                "images": image_paths if step_idx == 1 else None
-            })
-            all_messages.append({
-                "role": "assistant",
-                "content": step_output,
-                "_model": model_name,
-                "_role": role
-            })
+            all_messages.append(
+                {
+                    "role": "user",
+                    "content": user_prompt if step_idx == 1 else step_output,
+                    "images": image_paths if step_idx == 1 else None,
+                }
+            )
+            all_messages.append(
+                {
+                    "role": "assistant",
+                    "content": step_output,
+                    "_model": model_name,
+                    "_role": role,
+                }
+            )
 
             final_output = step_output
 
@@ -256,14 +252,13 @@ def run_sequential_consensus(
             print_error(error_msg)
             console.print(
                 f"Pipeline: {pipeline_name}, Step {step_idx}/{total_steps}",
-                style=Colors.RED
+                style=Colors.RED,
             )
             return final_output  # Return what we have so far
 
     # Pipeline completed
     console.print(
-        f"\n✓ Consensus pipeline completed ({total_steps} steps)",
-        style=Colors.GREEN
+        f"\n✓ Consensus pipeline completed ({total_steps} steps)", style=Colors.GREEN
     )
 
     return final_output
@@ -284,12 +279,10 @@ def run_parallel_consensus(
     then aggregate results.
     """
     console.print(
-        f"\n🌐 Starting consensus pipeline: {pipeline_name}",
-        style=Colors.CYAN
+        f"\n🌐 Starting consensus pipeline: {pipeline_name}", style=Colors.CYAN
     )
     console.print(
-        f"   Type: Parallel | Models: {len(pipeline['models'])}",
-        style=Colors.GREY
+        f"   Type: Parallel | Models: {len(pipeline['models'])}", style=Colors.GREY
     )
 
     models_config = pipeline["models"]
@@ -308,8 +301,7 @@ def run_parallel_consensus(
 
         # Print model header
         console.print(
-            f"\n[Model {model_idx}/{total_models}: {model_name}]",
-            style=Colors.MAGENTA
+            f"\n[Model {model_idx}/{total_models}: {model_name}]", style=Colors.MAGENTA
         )
 
         # Build messages
@@ -317,11 +309,7 @@ def run_parallel_consensus(
         if system_prompt:
             messages.append({"role": "system", "content": system_prompt})
 
-        messages.append({
-            "role": "user",
-            "content": user_prompt,
-            "images": image_paths
-        })
+        messages.append({"role": "user", "content": user_prompt, "images": image_paths})
 
         # Execute
         try:
@@ -332,7 +320,7 @@ def run_parallel_consensus(
                 messages=messages,
                 tools=tool_defs,
                 stream=False,
-                options=step_options
+                options=step_options,
             )
 
             msg = response["message"]
@@ -349,7 +337,7 @@ def run_parallel_consensus(
                     model=model_name,
                     messages=messages,
                     stream=True,
-                    options=step_options
+                    options=step_options,
                 )
 
                 model_output = handle_ollama_stream(follow_up)
@@ -357,16 +345,11 @@ def run_parallel_consensus(
                 console.print(model_output, style=Colors.GREY)
 
             # Store response
-            responses.append({
-                "model": model_name,
-                "content": model_output
-            })
+            responses.append({"model": model_name, "content": model_output})
 
             # Save to database
             db.add_message(
-                conversation_id,
-                "assistant",
-                f"[{model_name}]\n{model_output}"
+                conversation_id, "assistant", f"[{model_name}]\n{model_output}"
             )
 
         except Exception as e:
@@ -374,7 +357,7 @@ def run_parallel_consensus(
             print_error(error_msg)
             console.print(
                 f"Pipeline: {pipeline_name}, Model {model_idx}/{total_models}",
-                style=Colors.RED
+                style=Colors.RED,
             )
             # Continue with other models
 
@@ -392,21 +375,21 @@ def run_parallel_consensus(
             aggregation=aggregation,
             conversation_id=conversation_id,
             pipeline_name=pipeline_name,
-            model_options=model_options
+            model_options=model_options,
         )
     elif method == "best_of":
         # Return all responses formatted
         console.print(
             f"\n✓ Parallel consensus completed ({len(responses)} responses)",
-            style=Colors.GREEN
+            style=Colors.GREEN,
         )
 
         result = ""
         for idx, resp in enumerate(responses, 1):
-            result += f"\n{'='*60}\n"
+            result += f"\n{'=' * 60}\n"
             result += f"Response {idx} ({resp['model']}):\n"
-            result += f"{'='*60}\n"
-            result += resp['content']
+            result += f"{'=' * 60}\n"
+            result += resp["content"]
             result += "\n"
 
         return result
@@ -430,19 +413,18 @@ def synthesize_responses(
         "synthesis_prompt",
         "You have received multiple expert responses to the same question. "
         "Analyze them, identify common insights and disagreements, then provide "
-        "a comprehensive synthesis that combines the best aspects of each response."
+        "a comprehensive synthesis that combines the best aspects of each response.",
     )
 
     console.print(
-        f"\n🔬 Synthesizing responses with {synthesizer_model}...",
-        style=Colors.CYAN
+        f"\n🔬 Synthesizing responses with {synthesizer_model}...", style=Colors.CYAN
     )
 
     # Build synthesis prompt
     combined = f"{synthesis_prompt}\n\n"
     for idx, resp in enumerate(responses, 1):
         combined += f"--- Response {idx} ({resp['model']}) ---\n"
-        combined += resp['content']
+        combined += resp["content"]
         combined += "\n\n"
 
     # Execute synthesis
@@ -453,7 +435,7 @@ def synthesize_responses(
             model=synthesizer_model,
             messages=messages,
             stream=True,
-            options=model_options or {}
+            options=model_options or {},
         )
 
         synthesis = handle_ollama_stream(response)
@@ -462,13 +444,10 @@ def synthesize_responses(
         db.add_message(
             conversation_id,
             "assistant",
-            f"[SYNTHESIS - {synthesizer_model}]\n{synthesis}"
+            f"[SYNTHESIS - {synthesizer_model}]\n{synthesis}",
         )
 
-        console.print(
-            f"\n✓ Consensus synthesis completed",
-            style=Colors.GREEN
-        )
+        console.print("\n✓ Consensus synthesis completed", style=Colors.GREEN)
 
         return synthesis
 

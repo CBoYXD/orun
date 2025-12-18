@@ -6,8 +6,7 @@ from html.parser import HTMLParser
 
 import arxiv
 from ddgs import DDGS
-from langdetect import detect, LangDetectException
-
+from langdetect import LangDetectException, detect
 
 # --- Helper for HTML Parsing ---
 
@@ -311,7 +310,7 @@ def fetch_url(url: str) -> str:
         jina_url = f"https://r.jina.ai/{normalized}"
         headers = {
             "User-Agent": "Mozilla/5.0 (compatible; orun/1.0)",
-            "X-Return-Format": "markdown"  # Ensure markdown format
+            "X-Return-Format": "markdown",  # Ensure markdown format
         }
         req = urllib.request.Request(jina_url, headers=headers)
 
@@ -324,7 +323,7 @@ def fetch_url(url: str) -> str:
                     content = content[:15000] + "\n... (content truncated)"
 
                 return f"{content}\n\nSource: {normalized} (via Jina AI Reader)".strip()
-    except Exception as e:
+    except Exception:
         # Jina failed, fall back to custom parser
         pass
 
@@ -409,7 +408,11 @@ def get_arxiv_paper(arxiv_id: str) -> str:
 
     try:
         # Clean up the arxiv_id (remove version number if present)
-        arxiv_id = arxiv_id.strip().replace("https://arxiv.org/abs/", "").replace("http://arxiv.org/abs/", "")
+        arxiv_id = (
+            arxiv_id.strip()
+            .replace("https://arxiv.org/abs/", "")
+            .replace("http://arxiv.org/abs/", "")
+        )
         if "v" in arxiv_id:
             arxiv_id = arxiv_id.split("v")[0]
 
@@ -469,28 +472,28 @@ def web_search(query: str, max_results: int = 5) -> str:
         """Detect language and return appropriate DuckDuckGo region code."""
         # Language code to DuckDuckGo region mapping
         LANG_TO_REGION = {
-            'uk': 'ua-uk',  # Ukrainian
-            'ru': 'ru-ru',  # Russian
-            'en': 'us-en',  # English
-            'de': 'de-de',  # German
-            'fr': 'fr-fr',  # French
-            'es': 'es-es',  # Spanish
-            'it': 'it-it',  # Italian
-            'pt': 'pt-br',  # Portuguese
-            'pl': 'pl-pl',  # Polish
-            'nl': 'nl-nl',  # Dutch
-            'ja': 'jp-jp',  # Japanese
-            'ko': 'kr-kr',  # Korean
-            'zh-cn': 'cn-zh',  # Chinese Simplified
-            'zh-tw': 'tw-tzh',  # Chinese Traditional
+            "uk": "ua-uk",  # Ukrainian
+            "ru": "ru-ru",  # Russian
+            "en": "us-en",  # English
+            "de": "de-de",  # German
+            "fr": "fr-fr",  # French
+            "es": "es-es",  # Spanish
+            "it": "it-it",  # Italian
+            "pt": "pt-br",  # Portuguese
+            "pl": "pl-pl",  # Polish
+            "nl": "nl-nl",  # Dutch
+            "ja": "jp-jp",  # Japanese
+            "ko": "kr-kr",  # Korean
+            "zh-cn": "cn-zh",  # Chinese Simplified
+            "zh-tw": "tw-tzh",  # Chinese Traditional
         }
 
         try:
             lang = detect(text)
-            return LANG_TO_REGION.get(lang, 'us-en')  # Default to US English
+            return LANG_TO_REGION.get(lang, "us-en")  # Default to US English
         except (LangDetectException, Exception):
             # If detection fails, default to US English
-            return 'us-en'
+            return "us-en"
 
     # Search with DuckDuckGo
     try:

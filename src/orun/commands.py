@@ -1,27 +1,34 @@
 from orun import core, db, prompts_manager, tools
-from orun.rich_utils import console, create_table, print_table
 from orun.consensus_config import consensus_config
 from orun.models_config import models_config
+from orun.rich_utils import console, create_table, print_table
 from orun.tui import OrunApp
 from orun.utils import Colors, print_error, print_success
 
 
 def cmd_models():
     """Prints all available models and their aliases using a Rich table."""
-    models = models_config.get_models()
+    models_full = models_config.get_models_full()
     active_model = models_config.get_active_model()
 
-    if not models:
+    if not models_full:
         console.print("  No models found.", style=Colors.YELLOW)
         return
 
-    table = create_table("Available Models", ["Alias", "Model", "Status"])
+    table = create_table("Available Models", ["Model", "Shortcuts", "Status"])
 
-    for alias, model_name in models.items():
+    # Sort by model name
+    for model_name in sorted(models_full.keys()):
+        model_data = models_full[model_name]
+        shortcuts = model_data.get("shortcuts", [])
+
+        # Join shortcuts with comma
+        shortcuts_str = ", ".join(shortcuts)
+
         status = "🟢 Active" if model_name == active_model else ""
         table.add_row(
-            alias,
             model_name,
+            shortcuts_str,
             status,
             style=Colors.GREEN if model_name == active_model else None,
         )
@@ -54,9 +61,7 @@ def cmd_history(limit: int = 10):
             preview_source = "Empty"
 
         first_msg = (
-            preview_source[:50] + "..."
-            if len(preview_source) > 50
-            else preview_source
+            preview_source[:50] + "..." if len(preview_source) > 50 else preview_source
         )
         table.add_row(str(conv["id"]), conv["model"], first_msg)
 
@@ -203,10 +208,16 @@ def cmd_arxiv(query: str):
     if "/" in query or "." in query:
         # Could be an ID like "2301.07041" or "cs/0001001"
         # or a URL like "https://arxiv.org/abs/2301.07041"
-        if "arxiv.org" in query or query.replace(".", "").replace("/", "").replace("v", "").isdigit():
+        if (
+            "arxiv.org" in query
+            or query.replace(".", "").replace("/", "").replace("v", "").isdigit()
+        ):
             is_arxiv_id = True
 
-    console.print(f"🔍 {'Fetching arXiv paper' if is_arxiv_id else 'Searching arXiv'}...", style=Colors.CYAN)
+    console.print(
+        f"🔍 {'Fetching arXiv paper' if is_arxiv_id else 'Searching arXiv'}...",
+        style=Colors.CYAN,
+    )
 
     if is_arxiv_id:
         result = tools.get_arxiv_paper(query)
@@ -236,7 +247,7 @@ def cmd_consensus_list():
     if pipelines:
         table = create_table(
             "Available Consensus Pipelines",
-            ["Name", "Type", "Models", "Source", "Description"]
+            ["Name", "Type", "Models", "Source", "Description"],
         )
         for pipeline in pipelines:
             # Color code based on source
@@ -251,27 +262,27 @@ def cmd_consensus_list():
                 pipeline["type"],
                 str(pipeline["models_count"]),
                 source_display,
-                pipeline["description"][:50] + "..." if len(pipeline["description"]) > 50 else pipeline["description"],
-                style=Colors.GREEN if pipeline["source"] == "user" else None
+                (
+                    pipeline["description"][:50] + "..."
+                    if len(pipeline["description"]) > 50
+                    else pipeline["description"]
+                ),
+                style=Colors.GREEN if pipeline["source"] == "user" else None,
             )
         print_table(table)
         console.print(
-            "\nUse: orun \"your prompt\" --consensus <name>",
-            style=Colors.YELLOW
+            '\nUse: orun "your prompt" --consensus <name>', style=Colors.YELLOW
         )
-        console.print(
-            "Or in chat: /consensus <name>",
-            style=Colors.YELLOW
-        )
+        console.print("Or in chat: /consensus <name>", style=Colors.YELLOW)
         console.print(
             "\n💡 Tip: User-defined pipelines override defaults with the same name",
-            style=Colors.DIM
+            style=Colors.DIM,
         )
     else:
         console.print("No consensus pipelines found.", style=Colors.YELLOW)
         console.print(
             "Create pipelines in ~/.orun/config.json or data/consensus/",
-            style=Colors.GREY
+            style=Colors.GREY,
         )
 
 
@@ -286,31 +297,32 @@ def cmd_consensus_config():
     console.print(f"  Config file: {config_path}", style=Colors.GREY)
 
     if config_path.exists():
-        console.print(f"  Status: [green]Found[/green]")
+        console.print("  Status: [green]Found[/green]")
 
         # Count user-defined pipelines
         import json
+
         try:
             with open(config_path, "r", encoding="utf-8") as f:
                 config = json.load(f)
                 user_pipelines = config.get("consensus", {}).get("pipelines", {})
                 console.print(
-                    f"  User pipelines: {len(user_pipelines)}",
-                    style=Colors.GREY
+                    f"  User pipelines: {len(user_pipelines)}", style=Colors.GREY
                 )
         except Exception:
             pass
     else:
-        console.print(f"  Status: [yellow]Not found (will be created on first use)[/yellow]")
+        console.print(
+            "  Status: [yellow]Not found (will be created on first use)[/yellow]"
+        )
 
     # Show default pipelines location
-    console.print(f"  Default pipelines: {consensus_config.data_dir}", style=Colors.GREY)
+    console.print(
+        f"  Default pipelines: {consensus_config.data_dir}", style=Colors.GREY
+    )
     if consensus_config.data_dir.exists():
         default_count = len(list(consensus_config.data_dir.glob("*.json")))
-        console.print(
-            f"  Default count: {default_count}",
-            style=Colors.GREY
-        )
+        console.print(f"  Default count: {default_count}", style=Colors.GREY)
 
     console.print()
 
@@ -332,6 +344,5 @@ def cmd_consensus_config():
                 print_error(f"Could not open editor: {e}")
     else:
         console.print(
-            "Run any consensus command to create the config file.",
-            style=Colors.YELLOW
+            "Run any consensus command to create the config file.", style=Colors.YELLOW
         )

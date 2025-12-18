@@ -40,8 +40,7 @@ class ConsensusConfig:
                 self.create_default_config()
         except Exception as e:
             console.print(
-                f"Warning: Could not load consensus config: {e}",
-                style=Colors.YELLOW
+                f"Warning: Could not load consensus config: {e}", style=Colors.YELLOW
             )
 
     def load_default_pipelines(self):
@@ -65,12 +64,11 @@ class ConsensusConfig:
                 except Exception as e:
                     console.print(
                         f"Warning: Could not load {json_file.name}: {e}",
-                        style=Colors.YELLOW
+                        style=Colors.YELLOW,
                     )
         except Exception as e:
             console.print(
-                f"Warning: Could not load default pipelines: {e}",
-                style=Colors.YELLOW
+                f"Warning: Could not load default pipelines: {e}", style=Colors.YELLOW
             )
 
     def create_default_config(self):
@@ -85,16 +83,13 @@ class ConsensusConfig:
             if "consensus" not in config:
                 config["consensus"] = {
                     "pipelines": {},
-                    "_comment": "Custom consensus pipelines. Default pipelines are loaded from data/consensus/"
+                    "_comment": "Custom consensus pipelines. Default pipelines are loaded from data/consensus/",
                 }
 
                 with open(self.config_path, "w", encoding="utf-8") as f:
                     json.dump(config, f, indent=2)
         except Exception as e:
-            console.print(
-                f"Error creating consensus config: {e}",
-                style=Colors.RED
-            )
+            console.print(f"Error creating consensus config: {e}", style=Colors.RED)
 
     def get_pipeline(self, name: str) -> Optional[dict]:
         """Get a consensus pipeline by name."""
@@ -104,16 +99,20 @@ class ConsensusConfig:
         """List all available consensus pipelines with descriptions."""
         result = []
         for name, pipeline in self.pipelines.items():
-            result.append({
-                "name": name,
-                "description": pipeline.get("description", "No description"),
-                "type": pipeline.get("type", "unknown"),
-                "models_count": len(pipeline.get("models", [])),
-                "source": self.pipeline_sources.get(name, "unknown")
-            })
+            result.append(
+                {
+                    "name": name,
+                    "description": pipeline.get("description", "No description"),
+                    "type": pipeline.get("type", "unknown"),
+                    "models_count": len(pipeline.get("models", [])),
+                    "source": self.pipeline_sources.get(name, "unknown"),
+                }
+            )
         return sorted(result, key=lambda x: x["name"])
 
-    def validate_pipeline(self, pipeline: dict, available_models: Dict[str, str]) -> tuple[bool, str]:
+    def validate_pipeline(
+        self, pipeline: dict, available_models: Dict[str, str]
+    ) -> tuple[bool, str]:
         """
         Validate a consensus pipeline configuration.
         Returns (is_valid, error_message)
@@ -151,11 +150,17 @@ class ConsensusConfig:
 
                 if method == "synthesis":
                     if "synthesizer_model" not in agg:
-                        return False, "Parallel pipeline with synthesis requires 'synthesizer_model'"
+                        return (
+                            False,
+                            "Parallel pipeline with synthesis requires 'synthesizer_model'",
+                        )
 
                     synth_model = agg["synthesizer_model"]
                     if synth_model not in model_values:
-                        return False, f"Synthesizer model '{synth_model}' not found in Ollama"
+                        return (
+                            False,
+                            f"Synthesizer model '{synth_model}' not found in Ollama",
+                        )
 
         return True, ""
 
@@ -181,10 +186,7 @@ class ConsensusConfig:
 
             return True
         except Exception as e:
-            console.print(
-                f"Error saving pipeline '{name}': {e}",
-                style=Colors.RED
-            )
+            console.print(f"Error saving pipeline '{name}': {e}", style=Colors.RED)
             return False
 
 

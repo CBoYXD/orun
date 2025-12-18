@@ -1,9 +1,7 @@
 from datetime import datetime
 from pathlib import Path
 
-import ollama
 from peewee import (
-    BooleanField,
     CharField,
     DateTimeField,
     ForeignKeyField,
@@ -14,13 +12,7 @@ from peewee import (
 )
 
 from orun.rich_utils import console
-from orun.utils import (
-    Colors,
-    ensure_ollama_running,
-    print_error,
-    print_success,
-    print_warning,
-)
+from orun.utils import Colors, print_error
 
 DB_DIR = Path.home() / ".orun"
 DB_PATH = DB_DIR / "history.db"

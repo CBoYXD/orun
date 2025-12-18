@@ -13,9 +13,9 @@ from textual.screen import Screen
 from textual.widgets import Footer, Header, Input, Static
 
 from orun import db, prompts_manager, tools, utils
-from orun.yolo import yolo_mode
 from orun.consensus_config import consensus_config
 from orun.models_config import models_config
+from orun.yolo import yolo_mode
 
 SEARCH_ANALYSIS_PROMPT_NAME = "search_analysis"
 ARXIV_ANALYSIS_PROMPT_NAME = "arxiv_analysis"
@@ -104,8 +104,12 @@ class ChatScreen(Screen):
         self.system_prompt = None
         self.model_options = {}
 
-        self.search_analysis_prompt = prompts_manager.get_prompt(SEARCH_ANALYSIS_PROMPT_NAME)
-        self.arxiv_analysis_prompt = prompts_manager.get_prompt(ARXIV_ANALYSIS_PROMPT_NAME)
+        self.search_analysis_prompt = prompts_manager.get_prompt(
+            SEARCH_ANALYSIS_PROMPT_NAME
+        )
+        self.arxiv_analysis_prompt = prompts_manager.get_prompt(
+            ARXIV_ANALYSIS_PROMPT_NAME
+        )
 
         if self.conversation_id:
             # Defer loading until mount so we can add widgets
@@ -426,22 +430,25 @@ class ChatScreen(Screen):
                     self.chat_container.mount,
                     Static(
                         f"[green]📋 Clipboard image added to pending[/]\n🖼️  {os.path.basename(image_path)}",
-                        classes="status"
-                    )
+                        classes="status",
+                    ),
                 )
                 self.app.call_from_thread(self.chat_container.scroll_end)
             else:
                 # No image found
                 self.app.call_from_thread(
                     self.chat_container.mount,
-                    Static("[yellow]No image found in clipboard[/]", classes="status")
+                    Static("[yellow]No image found in clipboard[/]", classes="status"),
                 )
                 self.app.call_from_thread(self.chat_container.scroll_end)
         except Exception as e:
             error_details = traceback.format_exc()
             self.app.call_from_thread(
                 self.chat_container.mount,
-                Static(f"[red]Error pasting from clipboard: {e}[/]\n[dim]{error_details}[/]", classes="status")
+                Static(
+                    f"[red]Error pasting from clipboard: {e}[/]\n[dim]{error_details}[/]",
+                    classes="status",
+                ),
             )
             self.app.call_from_thread(self.chat_container.scroll_end)
 
@@ -489,10 +496,12 @@ class ChatScreen(Screen):
             self.chat_container.mount(
                 Static(
                     f"[dim]📎 Attached {len(images_to_attach)} image(s): {', '.join(image_names)}[/]",
-                    classes="status"
+                    classes="status",
                 )
             )
-            self.messages.append({"role": "user", "content": payload, "images": images_to_attach})
+            self.messages.append(
+                {"role": "user", "content": payload, "images": images_to_attach}
+            )
             db.add_message(self.conversation_id, "user", payload, images_to_attach)
             # Clear pending images after attaching
             self.pending_images = []
@@ -543,18 +552,21 @@ class ChatScreen(Screen):
             else:
                 query = arg.strip()
                 self.chat_container.mount(
-                    Static(f"[cyan]Searching the web for '{query}'...[/]", classes="status")
+                    Static(
+                        f"[cyan]Searching the web for '{query}'...[/]", classes="status"
+                    )
                 )
                 self.chat_container.scroll_end()
                 result = await asyncio.to_thread(tools.web_search, query, 5)
                 result_trimmed = result.strip()
                 if result_trimmed.lower().startswith("error"):
-                    self.chat_container.mount(
-                        Static(result_trimmed, classes="status")
-                    )
+                    self.chat_container.mount(Static(result_trimmed, classes="status"))
                 else:
                     self.chat_container.mount(
-                        Static("[cyan]Search results fetched. Asking AI to analyze...[/]", classes="status")
+                        Static(
+                            "[cyan]Search results fetched. Asking AI to analyze...[/]",
+                            classes="status",
+                        )
                     )
                     analysis_payload = (
                         f"{self.search_analysis_prompt}\n\n"
@@ -585,12 +597,13 @@ class ChatScreen(Screen):
                 result = await asyncio.to_thread(tools.fetch_url, url)
                 result_trimmed = result.strip()
                 if result_trimmed.lower().startswith("error"):
-                    self.chat_container.mount(
-                        Static(result_trimmed, classes="status")
-                    )
+                    self.chat_container.mount(Static(result_trimmed, classes="status"))
                 else:
                     self.chat_container.mount(
-                        Static("[cyan]Content fetched. Asking AI to analyze...[/]", classes="status")
+                        Static(
+                            "[cyan]Content fetched. Asking AI to analyze...[/]",
+                            classes="status",
+                        )
                     )
                     analysis_payload = (
                         f"{self.search_analysis_prompt}\n\n"
@@ -608,36 +621,47 @@ class ChatScreen(Screen):
         elif cmd == "/arxiv":
             if not arg:
                 self.chat_container.mount(
-                    Static("[yellow]Usage: /arxiv <query or arxiv_id>[/]", classes="status")
+                    Static(
+                        "[yellow]Usage: /arxiv <query or arxiv_id>[/]", classes="status"
+                    )
                 )
             else:
                 query = arg.strip()
                 # Check if it looks like an arXiv ID (digits, dots, optional v)
-                is_id = bool(query.replace(".", "").replace("v", "").replace("/", "").isdigit())
+                is_id = bool(
+                    query.replace(".", "").replace("v", "").replace("/", "").isdigit()
+                )
 
                 if is_id or "arxiv.org" in query.lower():
                     # Get specific paper
                     self.chat_container.mount(
-                        Static(f"[cyan]Fetching arXiv paper {query}...[/]", classes="status")
+                        Static(
+                            f"[cyan]Fetching arXiv paper {query}...[/]",
+                            classes="status",
+                        )
                     )
                     self.chat_container.scroll_end()
                     result = await asyncio.to_thread(tools.get_arxiv_paper, query)
                 else:
                     # Search for papers
                     self.chat_container.mount(
-                        Static(f"[cyan]Searching arXiv for '{query}'...[/]", classes="status")
+                        Static(
+                            f"[cyan]Searching arXiv for '{query}'...[/]",
+                            classes="status",
+                        )
                     )
                     self.chat_container.scroll_end()
                     result = await asyncio.to_thread(tools.search_arxiv, query, 5)
 
                 result_trimmed = result.strip()
                 if result_trimmed.lower().startswith("error"):
-                    self.chat_container.mount(
-                        Static(result_trimmed, classes="status")
-                    )
+                    self.chat_container.mount(Static(result_trimmed, classes="status"))
                 else:
                     self.chat_container.mount(
-                        Static("[cyan]Paper(s) fetched. Asking AI to analyze...[/]", classes="status")
+                        Static(
+                            "[cyan]Paper(s) fetched. Asking AI to analyze...[/]",
+                            classes="status",
+                        )
                     )
                     analysis_payload = (
                         f"{self.arxiv_analysis_prompt}\n\n"
@@ -660,20 +684,26 @@ class ChatScreen(Screen):
             # Get image paths using the same logic as -i parameter
             # Empty list [] means use latest image (index 1)
             try:
-                new_images = await asyncio.to_thread(utils.get_image_paths, image_args if image_args else [])
+                new_images = await asyncio.to_thread(
+                    utils.get_image_paths, image_args if image_args else []
+                )
                 if new_images:
                     self.pending_images.extend(new_images)
                     # Display confirmation
                     image_names = [f"🖼️  {os.path.basename(img)}" for img in new_images]
                     self.chat_container.mount(
                         Static(
-                            f"[green]Images added to pending ({len(new_images)}):[/]\n" + "\n".join(image_names),
-                            classes="status"
+                            f"[green]Images added to pending ({len(new_images)}):[/]\n"
+                            + "\n".join(image_names),
+                            classes="status",
                         )
                     )
                 else:
                     self.chat_container.mount(
-                        Static("[yellow]No images found matching the criteria.[/]", classes="status")
+                        Static(
+                            "[yellow]No images found matching the criteria.[/]",
+                            classes="status",
+                        )
                     )
             except Exception as e:
                 self.chat_container.mount(
@@ -688,39 +718,51 @@ class ChatScreen(Screen):
                     self.chat_container.mount(
                         Static(
                             f"[green]📋 Clipboard image added to pending[/]\n🖼️  {os.path.basename(image_path)}",
-                            classes="status"
+                            classes="status",
                         )
                     )
                 else:
                     self.chat_container.mount(
-                        Static("[yellow]No image found in clipboard[/]", classes="status")
+                        Static(
+                            "[yellow]No image found in clipboard[/]", classes="status"
+                        )
                     )
             except Exception as e:
                 self.chat_container.mount(
-                    Static(f"[red]Error pasting from clipboard: {e}[/]", classes="status")
+                    Static(
+                        f"[red]Error pasting from clipboard: {e}[/]", classes="status"
+                    )
                 )
         elif cmd == "/file":
             # Add files as context (supports glob patterns)
             if not arg:
                 self.chat_container.mount(
-                    Static("[yellow]Usage: /file <path1> [path2...][/]", classes="status")
+                    Static(
+                        "[yellow]Usage: /file <path1> [path2...][/]", classes="status"
+                    )
                 )
             else:
                 tokens = arg.split()
                 try:
-                    file_paths = await asyncio.to_thread(utils.parse_file_patterns, tokens)
+                    file_paths = await asyncio.to_thread(
+                        utils.parse_file_patterns, tokens
+                    )
                     if file_paths:
                         self.pending_files.extend(file_paths)
                         file_names = [f"📄 {os.path.basename(f)}" for f in file_paths]
                         self.chat_container.mount(
                             Static(
-                                f"[green]Files added to context ({len(file_paths)}):[/]\n" + "\n".join(file_names),
-                                classes="status"
+                                f"[green]Files added to context ({len(file_paths)}):[/]\n"
+                                + "\n".join(file_names),
+                                classes="status",
                             )
                         )
                     else:
                         self.chat_container.mount(
-                            Static("[yellow]No files found matching the pattern.[/]", classes="status")
+                            Static(
+                                "[yellow]No files found matching the pattern.[/]",
+                                classes="status",
+                            )
                         )
                 except Exception as e:
                     self.chat_container.mount(
@@ -736,25 +778,35 @@ class ChatScreen(Screen):
                 dir_path = arg.strip()
                 try:
                     self.chat_container.mount(
-                        Static(f"[cyan]Scanning directory: {dir_path}...[/]", classes="status")
+                        Static(
+                            f"[cyan]Scanning directory: {dir_path}...[/]",
+                            classes="status",
+                        )
                     )
                     self.chat_container.scroll_end()
-                    dir_context = await asyncio.to_thread(utils.read_directory_context, dir_path)
+                    dir_context = await asyncio.to_thread(
+                        utils.read_directory_context, dir_path
+                    )
                     if dir_context:
                         self.pending_dir_context = dir_context
                         self.chat_container.mount(
                             Static(
                                 f"[green]Directory context loaded ({len(dir_context)} chars)[/]",
-                                classes="status"
+                                classes="status",
                             )
                         )
                     else:
                         self.chat_container.mount(
-                            Static("[yellow]No readable files found in directory.[/]", classes="status")
+                            Static(
+                                "[yellow]No readable files found in directory.[/]",
+                                classes="status",
+                            )
                         )
                 except Exception as e:
                     self.chat_container.mount(
-                        Static(f"[red]Error scanning directory: {e}[/]", classes="status")
+                        Static(
+                            f"[red]Error scanning directory: {e}[/]", classes="status"
+                        )
                     )
         elif cmd == "/clipboard":
             # Paste text from clipboard
@@ -762,16 +814,22 @@ class ChatScreen(Screen):
                 clipboard_text = await asyncio.to_thread(utils.read_clipboard_text)
                 if clipboard_text:
                     self.pending_clipboard_text = clipboard_text
-                    preview = clipboard_text[:100] + "..." if len(clipboard_text) > 100 else clipboard_text
+                    preview = (
+                        clipboard_text[:100] + "..."
+                        if len(clipboard_text) > 100
+                        else clipboard_text
+                    )
                     self.chat_container.mount(
                         Static(
                             f"[green]📋 Clipboard text loaded ({len(clipboard_text)} chars)[/]\n[dim]{preview}[/]",
-                            classes="status"
+                            classes="status",
                         )
                     )
                 else:
                     self.chat_container.mount(
-                        Static("[yellow]No text found in clipboard[/]", classes="status")
+                        Static(
+                            "[yellow]No text found in clipboard[/]", classes="status"
+                        )
                     )
             except Exception as e:
                 self.chat_container.mount(
@@ -782,11 +840,17 @@ class ChatScreen(Screen):
             if not arg:
                 if self.system_prompt:
                     self.chat_container.mount(
-                        Static(f"[cyan]Current system prompt:[/]\n{self.system_prompt}", classes="status")
+                        Static(
+                            f"[cyan]Current system prompt:[/]\n{self.system_prompt}",
+                            classes="status",
+                        )
                     )
                 else:
                     self.chat_container.mount(
-                        Static("[yellow]Usage: /system <prompt> | /system clear[/]", classes="status")
+                        Static(
+                            "[yellow]Usage: /system <prompt> | /system clear[/]",
+                            classes="status",
+                        )
                     )
             elif arg.strip().lower() == "clear":
                 self.system_prompt = None
@@ -796,7 +860,10 @@ class ChatScreen(Screen):
             else:
                 self.system_prompt = arg.strip()
                 self.chat_container.mount(
-                    Static(f"[green]System prompt set ({len(self.system_prompt)} chars)[/]", classes="status")
+                    Static(
+                        f"[green]System prompt set ({len(self.system_prompt)} chars)[/]",
+                        classes="status",
+                    )
                 )
         elif cmd == "/temperature":
             # Set model temperature
@@ -811,15 +878,24 @@ class ChatScreen(Screen):
                     if 0.0 <= value <= 2.0:
                         self.model_options["temperature"] = value
                         self.chat_container.mount(
-                            Static(f"[green]Temperature set to {value}[/]", classes="status")
+                            Static(
+                                f"[green]Temperature set to {value}[/]",
+                                classes="status",
+                            )
                         )
                     else:
                         self.chat_container.mount(
-                            Static("[yellow]Temperature must be between 0.0 and 2.0[/]", classes="status")
+                            Static(
+                                "[yellow]Temperature must be between 0.0 and 2.0[/]",
+                                classes="status",
+                            )
                         )
                 except ValueError:
                     self.chat_container.mount(
-                        Static("[yellow]Invalid temperature value. Use a number between 0.0 and 2.0[/]", classes="status")
+                        Static(
+                            "[yellow]Invalid temperature value. Use a number between 0.0 and 2.0[/]",
+                            classes="status",
+                        )
                     )
         elif cmd == "/topp":
             # Set top-p sampling
@@ -838,11 +914,17 @@ class ChatScreen(Screen):
                         )
                     else:
                         self.chat_container.mount(
-                            Static("[yellow]Top-p must be between 0.0 and 1.0[/]", classes="status")
+                            Static(
+                                "[yellow]Top-p must be between 0.0 and 1.0[/]",
+                                classes="status",
+                            )
                         )
                 except ValueError:
                     self.chat_container.mount(
-                        Static("[yellow]Invalid top-p value. Use a number between 0.0 and 1.0[/]", classes="status")
+                        Static(
+                            "[yellow]Invalid top-p value. Use a number between 0.0 and 1.0[/]",
+                            classes="status",
+                        )
                     )
         elif cmd == "/export":
             # Save conversation to file
@@ -855,6 +937,7 @@ class ChatScreen(Screen):
                 try:
                     # Export conversation messages
                     from pathlib import Path
+
                     output_path = Path(filepath)
                     output_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -865,13 +948,19 @@ class ChatScreen(Screen):
                         content = msg.get("content", "")
                         lines.append(f"\n## {role}\n{content}\n")
 
-                    output_path.write_text("\n".join(lines), encoding='utf-8')
+                    output_path.write_text("\n".join(lines), encoding="utf-8")
                     self.chat_container.mount(
-                        Static(f"[green]✅ Conversation exported to: {filepath}[/]", classes="status")
+                        Static(
+                            f"[green]✅ Conversation exported to: {filepath}[/]",
+                            classes="status",
+                        )
                     )
                 except Exception as e:
                     self.chat_container.mount(
-                        Static(f"[red]Error exporting conversation: {e}[/]", classes="status")
+                        Static(
+                            f"[red]Error exporting conversation: {e}[/]",
+                            classes="status",
+                        )
                     )
         elif cmd == "/prompt":
             tokens = [tok for tok in arg.split() if tok]
@@ -938,7 +1027,9 @@ class ChatScreen(Screen):
                         messages.append(f"[yellow]Missing: {', '.join(missing)}[/]")
                     if not messages:
                         messages.append("[yellow]No prompts processed.[/]")
-                    self.chat_container.mount(Static("\n".join(messages), classes="status"))
+                    self.chat_container.mount(
+                        Static("\n".join(messages), classes="status")
+                    )
         elif cmd == "/prompts":
             tokens = [tok for tok in arg.split() if tok]
             if tokens and tokens[0].lower() == "active":
@@ -1037,7 +1128,9 @@ class ChatScreen(Screen):
                     for alias, name in sorted(models.items()):
                         marker = " [green](active)[/]" if name == active else ""
                         lines.append(f"  [green]{alias}[/green] -> {name}{marker}")
-                    self.chat_container.mount(Static("\n".join(lines), classes="status"))
+                    self.chat_container.mount(
+                        Static("\n".join(lines), classes="status")
+                    )
             else:
                 switched = await asyncio.to_thread(models_config.set_active_model, arg)
                 if not switched:
@@ -1077,17 +1170,21 @@ class ChatScreen(Screen):
                 # Show available consensus pipelines
                 pipelines = consensus_config.list_pipelines()
                 if pipelines:
-                    pipeline_list = "\n".join([
-                        f"  • [green]{p['name']}[/] ({p['type']}) - {p['description'][:50]}..."
-                        if len(p['description']) > 50 else
-                        f"  • [green]{p['name']}[/] ({p['type']}) - {p['description']}"
-                        for p in pipelines
-                    ])
+                    pipeline_list = "\n".join(
+                        [
+                            (
+                                f"  • [green]{p['name']}[/] ({p['type']}) - {p['description'][:50]}..."
+                                if len(p["description"]) > 50
+                                else f"  • [green]{p['name']}[/] ({p['type']}) - {p['description']}"
+                            )
+                            for p in pipelines
+                        ]
+                    )
                     self.chat_container.mount(
                         Static(
                             f"[cyan]Available Consensus Pipelines:[/]\n{pipeline_list}\n\n"
                             "[yellow]Usage: /consensus <pipeline_name>[/]",
-                            classes="status"
+                            classes="status",
                         )
                     )
                 else:
@@ -1095,7 +1192,7 @@ class ChatScreen(Screen):
                         Static(
                             "[yellow]No consensus pipelines found.[/]\n"
                             "Create pipelines in ~/.orun/config.json or data/consensus/",
-                            classes="status"
+                            classes="status",
                         )
                     )
             else:
@@ -1104,8 +1201,8 @@ class ChatScreen(Screen):
                     Static(
                         f"[yellow]Consensus mode for TUI is not yet implemented.[/]\n"
                         f"Use single-shot mode instead:\n"
-                        f"  orun \"your prompt\" --consensus {arg}",
-                        classes="status"
+                        f'  orun "your prompt" --consensus {arg}',
+                        classes="status",
                     )
                 )
         else:
@@ -1123,7 +1220,9 @@ class ChatScreen(Screen):
 
             # Prepare messages with optional system prompt
             messages = self.messages.copy()
-            if self.system_prompt and (not messages or messages[0].get("role") != "system"):
+            if self.system_prompt and (
+                not messages or messages[0].get("role") != "system"
+            ):
                 messages.insert(0, {"role": "system", "content": self.system_prompt})
 
             # Prepare model options
@@ -1142,7 +1241,7 @@ class ChatScreen(Screen):
                     messages=messages,
                     tools=tool_defs,
                     stream=False,
-                    options=options
+                    options=options,
                 )
                 msg = response["message"]
                 self.messages.append(msg)
@@ -1239,7 +1338,9 @@ class ChatScreen(Screen):
         full_resp = ""
         # Use provided messages or default to self.messages
         msgs = messages if messages is not None else self.messages
-        stream = ollama.chat(model=self.model_name, messages=msgs, stream=True, options=options)
+        stream = ollama.chat(
+            model=self.model_name, messages=msgs, stream=True, options=options
+        )
 
         for chunk in stream:
             content = chunk["message"]["content"]

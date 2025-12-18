@@ -2,12 +2,11 @@ import argparse
 import os
 import sys
 
-from orun import commands, core, db, utils
+from orun import commands, consensus, core, db, utils
 from orun.models_config import models_config
 from orun.rich_utils import console
 from orun.tui import OrunApp
 from orun.utils import Colors, print_warning
-from orun import consensus
 
 
 @utils.handle_cli_errors
@@ -331,19 +330,34 @@ Commands:
         "-i", "--images", nargs="*", type=str, help="Screenshot indices"
     )
     parser.add_argument(
-        "-f", "--files", nargs="*", type=str, help="Files to include as context (supports glob patterns)"
+        "-f",
+        "--files",
+        nargs="*",
+        type=str,
+        help="Files to include as context (supports glob patterns)",
     )
     parser.add_argument(
         "--dir", type=str, help="Directory to scan and include as context (recursive)"
     )
     parser.add_argument(
-        "-p", "--prompt", dest="use_prompt", action="append", help="Use prompt template(s) (can be used multiple times)"
+        "-p",
+        "--prompt",
+        dest="use_prompt",
+        action="append",
+        help="Use prompt template(s) (can be used multiple times)",
     )
     parser.add_argument(
-        "-s", "--strategy", dest="use_strategy", action="append", help="Use strategy template(s) (can be used multiple times)"
+        "-s",
+        "--strategy",
+        dest="use_strategy",
+        action="append",
+        help="Use strategy template(s) (can be used multiple times)",
     )
     parser.add_argument(
-        "-o", "--output", type=str, help="Save output to file instead of printing to console"
+        "-o",
+        "--output",
+        type=str,
+        help="Save output to file instead of printing to console",
     )
     parser.add_argument(
         "--system", type=str, help="Custom system prompt to guide the AI's behavior"
@@ -355,19 +369,28 @@ Commands:
         "--to-clipboard", action="store_true", help="Copy output to clipboard"
     )
     parser.add_argument(
-        "--temperature", type=float, help="Model temperature (0.0-2.0, default: varies by model)"
+        "--temperature",
+        type=float,
+        help="Model temperature (0.0-2.0, default: varies by model)",
     )
     parser.add_argument(
         "--top-p", type=float, help="Top-p sampling (0.0-1.0, default: varies by model)"
     )
     parser.add_argument(
-        "-q", "--quiet", action="store_true", help="Quiet mode: suppress progress messages"
+        "-q",
+        "--quiet",
+        action="store_true",
+        help="Quiet mode: suppress progress messages",
     )
     parser.add_argument(
         "--yolo", action="store_true", help="Enable YOLO mode (no confirmations)"
     )
     parser.add_argument(
-        "-C", "--consensus", type=str, metavar="PIPELINE", help="Use consensus pipeline instead of single model"
+        "-C",
+        "--consensus",
+        type=str,
+        metavar="PIPELINE",
+        help="Use consensus pipeline instead of single model",
     )
 
     args = parser.parse_args()
@@ -438,7 +461,9 @@ Commands:
         # Use consensus pipeline instead of single model
         # Note: Some single-shot options may not apply to consensus
         if args.use_prompt or args.use_strategy:
-            print_warning("Warning: Prompt/strategy templates are not applied in consensus mode.")
+            print_warning(
+                "Warning: Prompt/strategy templates are not applied in consensus mode."
+            )
             print_warning("Use system prompts in the pipeline configuration instead.")
 
         # Run consensus

@@ -10,7 +10,7 @@ from pathlib import Path
 import ollama
 from PIL import Image, ImageGrab
 
-from .rich_utils import Colors, console, print_error, print_info, print_success, print_warning
+from .rich_utils import Colors, console, print_error, print_info, print_warning
 
 
 def ensure_ollama_running():
@@ -191,7 +191,13 @@ def save_clipboard_image() -> str | None:
             # Try to open the first file if it's an image
             try:
                 first_file = Path(clipboard_content[0])
-                if first_file.suffix.lower() in ['.png', '.jpg', '.jpeg', '.gif', '.bmp']:
+                if first_file.suffix.lower() in [
+                    ".png",
+                    ".jpg",
+                    ".jpeg",
+                    ".gif",
+                    ".bmp",
+                ]:
                     image = Image.open(first_file)
             except:
                 return None
@@ -212,15 +218,17 @@ def save_clipboard_image() -> str | None:
         filepath = temp_dir / filename
 
         # Convert to RGB if needed (for RGBA or other modes)
-        if image.mode in ('RGBA', 'LA', 'P'):
+        if image.mode in ("RGBA", "LA", "P"):
             # Convert RGBA to RGB with white background
-            background = Image.new('RGB', image.size, (255, 255, 255))
-            if image.mode == 'P':
-                image = image.convert('RGBA')
-            background.paste(image, mask=image.split()[-1] if image.mode in ('RGBA', 'LA') else None)
+            background = Image.new("RGB", image.size, (255, 255, 255))
+            if image.mode == "P":
+                image = image.convert("RGBA")
+            background.paste(
+                image, mask=image.split()[-1] if image.mode in ("RGBA", "LA") else None
+            )
             image = background
-        elif image.mode != 'RGB':
-            image = image.convert('RGB')
+        elif image.mode != "RGB":
+            image = image.convert("RGB")
 
         # Save image
         image.save(filepath, "PNG")
@@ -228,7 +236,7 @@ def save_clipboard_image() -> str | None:
         console.print(f"📋 Saved clipboard image: {filename}", style=Colors.GREEN)
         return str(filepath)
 
-    except Exception as e:
+    except Exception:
         # Silently fail - no image in clipboard
         return None
 
@@ -252,11 +260,11 @@ def read_file_context(file_paths: list[str]) -> str:
 
             # Read file content
             try:
-                content = path.read_text(encoding='utf-8')
+                content = path.read_text(encoding="utf-8")
             except UnicodeDecodeError:
                 # Try with latin-1 as fallback
                 try:
-                    content = path.read_text(encoding='latin-1')
+                    content = path.read_text(encoding="latin-1")
                 except Exception as e:
                     print_error(f"Could not read {file_path}: {e}")
                     continue
@@ -323,7 +331,7 @@ def read_clipboard_text() -> str | None:
                     ["powershell", "-command", "Get-Clipboard"],
                     capture_output=True,
                     text=True,
-                    timeout=5
+                    timeout=5,
                 )
                 if result.returncode == 0 and result.stdout.strip():
                     console.print("📋 Read text from clipboard", style=Colors.DIM)
@@ -335,10 +343,7 @@ def read_clipboard_text() -> str | None:
         elif sys.platform == "darwin":  # macOS
             try:
                 result = subprocess.run(
-                    ["pbpaste"],
-                    capture_output=True,
-                    text=True,
-                    timeout=5
+                    ["pbpaste"], capture_output=True, text=True, timeout=5
                 )
                 if result.returncode == 0 and result.stdout.strip():
                     console.print("📋 Read text from clipboard", style=Colors.DIM)
@@ -351,7 +356,7 @@ def read_clipboard_text() -> str | None:
                     ["xclip", "-selection", "clipboard", "-o"],
                     capture_output=True,
                     text=True,
-                    timeout=5
+                    timeout=5,
                 )
                 if result.returncode == 0 and result.stdout.strip():
                     console.print("📋 Read text from clipboard", style=Colors.DIM)
@@ -360,7 +365,7 @@ def read_clipboard_text() -> str | None:
                 pass
 
         return None
-    except Exception as e:
+    except Exception:
         return None
 
 
@@ -373,7 +378,7 @@ def write_clipboard_text(text: str) -> bool:
                 process = subprocess.Popen(
                     ["powershell", "-command", "Set-Clipboard"],
                     stdin=subprocess.PIPE,
-                    text=True
+                    text=True,
                 )
                 process.communicate(input=text, timeout=5)
                 if process.returncode == 0 or process.returncode is None:
@@ -385,11 +390,7 @@ def write_clipboard_text(text: str) -> bool:
         # On macOS, use pbcopy
         elif sys.platform == "darwin":
             try:
-                process = subprocess.Popen(
-                    ["pbcopy"],
-                    stdin=subprocess.PIPE,
-                    text=True
-                )
+                process = subprocess.Popen(["pbcopy"], stdin=subprocess.PIPE, text=True)
                 process.communicate(input=text, timeout=5)
                 if process.returncode == 0 or process.returncode is None:
                     console.print("📋 Copied to clipboard", style=Colors.GREEN)
@@ -403,7 +404,7 @@ def write_clipboard_text(text: str) -> bool:
                 process = subprocess.Popen(
                     ["xclip", "-selection", "clipboard"],
                     stdin=subprocess.PIPE,
-                    text=True
+                    text=True,
                 )
                 process.communicate(input=text, timeout=5)
                 if process.returncode == 0 or process.returncode is None:
@@ -435,8 +436,34 @@ def read_directory_context(dir_path: str, max_files: int = 50) -> str:
             return ""
 
         # Common patterns to exclude
-        exclude_dirs = {'.git', '__pycache__', 'node_modules', '.venv', 'venv', 'dist', 'build', '.cache', '.pytest_cache', 'target'}
-        exclude_exts = {'.pyc', '.pyo', '.so', '.dll', '.exe', '.bin', '.jpg', '.jpeg', '.png', '.gif', '.pdf', '.zip', '.tar', '.gz'}
+        exclude_dirs = {
+            ".git",
+            "__pycache__",
+            "node_modules",
+            ".venv",
+            "venv",
+            "dist",
+            "build",
+            ".cache",
+            ".pytest_cache",
+            "target",
+        }
+        exclude_exts = {
+            ".pyc",
+            ".pyo",
+            ".so",
+            ".dll",
+            ".exe",
+            ".bin",
+            ".jpg",
+            ".jpeg",
+            ".png",
+            ".gif",
+            ".pdf",
+            ".zip",
+            ".tar",
+            ".gz",
+        }
 
         # Find all files
         all_files = []
@@ -466,11 +493,14 @@ def read_directory_context(dir_path: str, max_files: int = 50) -> str:
         for file_path in all_files[:max_files]:
             try:
                 # Try to read as text
-                content = file_path.read_text(encoding='utf-8', errors='ignore')
+                content = file_path.read_text(encoding="utf-8", errors="ignore")
 
                 # Skip if too large (>100KB)
                 if len(content) > 100000:
-                    console.print(f"⏭️  Skipped (too large): {file_path.relative_to(path)}", style=Colors.DIM)
+                    console.print(
+                        f"⏭️  Skipped (too large): {file_path.relative_to(path)}",
+                        style=Colors.DIM,
+                    )
                     continue
 
                 rel_path = file_path.relative_to(path)
@@ -478,12 +508,14 @@ def read_directory_context(dir_path: str, max_files: int = 50) -> str:
                 files_read += 1
                 console.print(f"📄 Added: {rel_path}", style=Colors.DIM)
 
-            except Exception as e:
+            except Exception:
                 # Skip files that can't be read
                 continue
 
         if files_read > 0:
-            console.print(f"✅ Read {files_read} files from {dir_path}", style=Colors.GREEN)
+            console.print(
+                f"✅ Read {files_read} files from {dir_path}", style=Colors.GREEN
+            )
             return "\n".join(context_parts)
         else:
             print_warning(f"No files could be read from {dir_path}")

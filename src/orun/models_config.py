@@ -1,6 +1,6 @@
 import json
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, Optional
 
 import ollama
 
@@ -24,10 +24,13 @@ class ModelsConfig:
       "active_model": "gpt-oss:20b"
     }
     """
+
     def __init__(self):
         self.config_dir = Path.home() / ".orun"
         self.config_path = self.config_dir / "config.json"
-        self.models: Dict[str, Dict] = {}  # full_name -> {shortcuts: [...], options: {...}}
+        self.models: Dict[
+            str, Dict
+        ] = {}  # full_name -> {shortcuts: [...], options: {...}}
         self.active_model: Optional[str] = None
 
         # Create .orun directory if it doesn't exist
@@ -60,8 +63,7 @@ class ModelsConfig:
                 self.create_default_config()
         except Exception as e:
             console.print(
-                f"Warning: Could not load models config: {e}",
-                style=Colors.YELLOW
+                f"Warning: Could not load models config: {e}", style=Colors.YELLOW
             )
             self.models = {}
             self.active_model = None
@@ -71,10 +73,7 @@ class ModelsConfig:
         new_models = {}
         for alias, full_name in old_models.items():
             if full_name not in new_models:
-                new_models[full_name] = {
-                    "shortcuts": [alias],
-                    "options": {}
-                }
+                new_models[full_name] = {"shortcuts": [alias], "options": {}}
             else:
                 # Add alias to existing shortcuts
                 if alias not in new_models[full_name]["shortcuts"]:
@@ -99,10 +98,7 @@ class ModelsConfig:
 
             self.save_config(config)
         except Exception as e:
-            console.print(
-                f"Error creating models config: {e}",
-                style=Colors.RED
-            )
+            console.print(f"Error creating models config: {e}", style=Colors.RED)
 
     def save_config(self, config: dict = None):
         """Save models configuration to config.json."""
@@ -125,10 +121,7 @@ class ModelsConfig:
 
             return True
         except Exception as e:
-            console.print(
-                f"Error saving models config: {e}",
-                style=Colors.RED
-            )
+            console.print(f"Error saving models config: {e}", style=Colors.RED)
             return False
 
     def refresh_ollama_models(self):
@@ -138,7 +131,7 @@ class ModelsConfig:
             response = ollama.list()
 
             # Handle both dict and object responses
-            if hasattr(response, 'models'):
+            if hasattr(response, "models"):
                 ollama_models = response.models
             elif isinstance(response, dict):
                 ollama_models = response.get("models", [])
@@ -154,9 +147,9 @@ class ModelsConfig:
 
             for model_info in ollama_models:
                 # Handle both dict and object model info
-                if hasattr(model_info, 'model'):
+                if hasattr(model_info, "model"):
                     full_name = model_info.model
-                elif hasattr(model_info, 'name'):
+                elif hasattr(model_info, "name"):
                     full_name = model_info.name
                 elif isinstance(model_info, dict):
                     full_name = model_info.get("model", model_info.get("name", ""))
@@ -182,10 +175,7 @@ class ModelsConfig:
                         alias = f"{default_alias}{counter}"
                         counter += 1
 
-                    new_models[full_name] = {
-                        "shortcuts": [alias],
-                        "options": {}
-                    }
+                    new_models[full_name] = {"shortcuts": [alias], "options": {}}
 
             # Update models
             old_model_names = set(self.models.keys())
@@ -197,7 +187,7 @@ class ModelsConfig:
             if self.active_model and self.active_model not in self.models:
                 console.print(
                     f"Active model '{self.active_model}' no longer available.",
-                    style=Colors.YELLOW
+                    style=Colors.YELLOW,
                 )
                 self.active_model = None
 
@@ -211,7 +201,9 @@ class ModelsConfig:
             if added:
                 console.print(f"✅ Added {len(added)} model(s)", style=Colors.GREEN)
             if removed:
-                console.print(f"🗑️  Removed {len(removed)} model(s)", style=Colors.YELLOW)
+                console.print(
+                    f"🗑️  Removed {len(removed)} model(s)", style=Colors.YELLOW
+                )
 
             print_success(f"Synced {len(new_models)} models from Ollama")
 
@@ -271,7 +263,9 @@ class ModelsConfig:
 
         # Check if new_shortcut is already used by a different model
         for model_name, model_data in self.models.items():
-            if model_name != full_name and new_shortcut in model_data.get("shortcuts", []):
+            if model_name != full_name and new_shortcut in model_data.get(
+                "shortcuts", []
+            ):
                 return False
 
         # Add the new shortcut to this model
