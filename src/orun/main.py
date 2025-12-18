@@ -273,43 +273,7 @@ def main():
     # Default Query Mode (Single Shot)
     parser = argparse.ArgumentParser(
         description="AI CLI wrapper for Ollama with powerful single-shot capabilities",
-        usage="""orun [command] [prompt] [options]
-
-Commands:
-  chat              Start interactive chat session
-  arxiv <query>     Search or fetch arXiv papers
-  search <query>    Search the web (Google/DuckDuckGo)
-  fetch <url>       Fetch and display web content
-  consensus         List available consensus pipelines
-  consensus-config  Configure consensus pipelines
-  models            List available models
-  refresh           Sync models from Ollama
-  shortcut          Change model shortcut
-  set-active        Set active model
-  history           List recent conversations
-  prompts           List available prompt templates
-  strategies        List available strategy templates
-  c <id>            Continue conversation by ID
-  last              Continue last conversation
-
-Single-shot options:
-  -m <model>        Model to use
-  -C <pipeline>     Use consensus pipeline instead of single model
-  -p <prompt>       Prompt template(s) (can use multiple times)
-  -s <strategy>     Strategy template(s) (can use multiple times)
-  -f <file>         File(s) as context (supports globs)
-  --dir <path>      Directory to scan recursively
-  -i <indices>      Screenshot indices (e.g., 1, 1,2, 3x)
-  -o <file>         Save output to file
-  --system <text>   Custom system prompt
-  --from-clipboard  Read input from clipboard
-  --to-clipboard    Copy output to clipboard
-  --temperature N   Model temperature (0.0-2.0)
-  --top-p N         Top-p sampling (0.0-1.0)
-  -q, --quiet       Suppress progress messages
-  --yolo            No confirmations for commands
-  --single-shot     Exit after response (for c/last)
-
+        epilog="""
 Examples:
   # File context
   orun "review code" -f src/main.py -f src/core.py
@@ -341,7 +305,25 @@ Examples:
   orun "task" -p review_code -p security -s cot
   orun "story" --temperature 0.9 --system "Be creative"
   result=$(orun "query" -q)
+
+Commands:
+  chat              Start interactive chat session
+  arxiv <query>     Search or fetch arXiv papers
+  search <query>    Search the web (DuckDuckGo)
+  fetch <url>       Fetch and display web content
+  consensus         List available consensus pipelines
+  consensus-config  Configure consensus pipelines
+  models            List available models
+  refresh           Sync models from Ollama
+  shortcut          Change model shortcut
+  set-active        Set active model
+  history           List recent conversations
+  prompts           List available prompt templates
+  strategies        List available strategy templates
+  c <id>            Continue conversation by ID
+  last              Continue last conversation
 """,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument("prompt", nargs="*", help="Text prompt")
     parser.add_argument("-m", "--model", default="default", help="Model alias or name")
