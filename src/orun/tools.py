@@ -307,13 +307,39 @@ def search_files(path: str, pattern: str) -> str:
 
 
 def fetch_url(url: str) -> str:
-    """Fetches and summarizes text content from a URL."""
+    """
+    Fetches and converts URL content to readable text.
+    Uses Jina AI Reader API (LLM-optimized, free) with fallback to custom parser.
+    """
     normalized = url.strip()
     if not normalized:
         return "Error: URL is empty."
     if not normalized.startswith(("http://", "https://")):
         normalized = f"https://{normalized}"
 
+    # Try Jina AI Reader first (optimized for LLM, returns clean markdown)
+    try:
+        jina_url = f"https://r.jina.ai/{normalized}"
+        headers = {
+            "User-Agent": "Mozilla/5.0 (compatible; orun/1.0)",
+            "X-Return-Format": "markdown"  # Ensure markdown format
+        }
+        req = urllib.request.Request(jina_url, headers=headers)
+
+        with urllib.request.urlopen(req, timeout=30) as response:
+            content = response.read().decode("utf-8", errors="ignore")
+
+            # Jina returns clean markdown - just validate and return
+            if content and len(content) > 50:  # Basic validation
+                if len(content) > 15000:
+                    content = content[:15000] + "\n... (content truncated)"
+
+                return f"{content}\n\nSource: {normalized} (via Jina AI Reader)".strip()
+    except Exception as e:
+        # Jina failed, fall back to custom parser
+        pass
+
+    # Fallback: Custom HTML parser
     try:
         headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
         req = urllib.request.Request(normalized, headers=headers)

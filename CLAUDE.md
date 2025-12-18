@@ -182,8 +182,9 @@ The AI can search the web and fetch web pages using two methods:
 
 **fetch_url(url)**
 - Fetch and parse content from a specific URL
-- Converts HTML to readable markdown format
-- Returns page title and formatted content
+- Uses Jina AI Reader API (LLM-optimized, free) for clean markdown conversion
+- Falls back to custom HTML parser if Jina is unavailable
+- Returns page title and formatted content optimized for LLM analysis
 - Example: `"Fetch https://example.com"`
 
 #### 2. TUI Command (Interactive Chat)
