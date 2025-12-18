@@ -313,6 +313,118 @@ def read_stdin() -> str | None:
     return None
 
 
+def read_clipboard_text() -> str | None:
+    """Reads text content from clipboard."""
+    try:
+        # Try using ImageGrab first (it can also get text on some platforms)
+        from PIL import ImageGrab
+        import subprocess
+
+        # On Windows, use PowerShell to get clipboard text
+        if sys.platform == "win32":
+            try:
+                result = subprocess.run(
+                    ["powershell", "-command", "Get-Clipboard"],
+                    capture_output=True,
+                    text=True,
+                    timeout=5
+                )
+                if result.returncode == 0 and result.stdout.strip():
+                    console.print("📋 Read text from clipboard", style=Colors.DIM)
+                    return result.stdout.strip()
+            except Exception:
+                pass
+
+        # On Linux/Mac, try xclip/pbpaste
+        elif sys.platform == "darwin":  # macOS
+            try:
+                result = subprocess.run(
+                    ["pbpaste"],
+                    capture_output=True,
+                    text=True,
+                    timeout=5
+                )
+                if result.returncode == 0 and result.stdout.strip():
+                    console.print("📋 Read text from clipboard", style=Colors.DIM)
+                    return result.stdout.strip()
+            except Exception:
+                pass
+        else:  # Linux
+            try:
+                result = subprocess.run(
+                    ["xclip", "-selection", "clipboard", "-o"],
+                    capture_output=True,
+                    text=True,
+                    timeout=5
+                )
+                if result.returncode == 0 and result.stdout.strip():
+                    console.print("📋 Read text from clipboard", style=Colors.DIM)
+                    return result.stdout.strip()
+            except Exception:
+                pass
+
+        return None
+    except Exception as e:
+        return None
+
+
+def write_clipboard_text(text: str) -> bool:
+    """Writes text content to clipboard."""
+    try:
+        import subprocess
+
+        # On Windows, use PowerShell to set clipboard
+        if sys.platform == "win32":
+            try:
+                process = subprocess.Popen(
+                    ["powershell", "-command", "Set-Clipboard"],
+                    stdin=subprocess.PIPE,
+                    text=True
+                )
+                process.communicate(input=text, timeout=5)
+                if process.returncode == 0 or process.returncode is None:
+                    console.print("📋 Copied to clipboard", style=Colors.GREEN)
+                    return True
+            except Exception:
+                pass
+
+        # On macOS, use pbcopy
+        elif sys.platform == "darwin":
+            try:
+                process = subprocess.Popen(
+                    ["pbcopy"],
+                    stdin=subprocess.PIPE,
+                    text=True
+                )
+                process.communicate(input=text, timeout=5)
+                if process.returncode == 0 or process.returncode is None:
+                    console.print("📋 Copied to clipboard", style=Colors.GREEN)
+                    return True
+            except Exception:
+                pass
+
+        # On Linux, try xclip
+        else:
+            try:
+                process = subprocess.Popen(
+                    ["xclip", "-selection", "clipboard"],
+                    stdin=subprocess.PIPE,
+                    text=True
+                )
+                process.communicate(input=text, timeout=5)
+                if process.returncode == 0 or process.returncode is None:
+                    console.print("📋 Copied to clipboard", style=Colors.GREEN)
+                    return True
+            except Exception:
+                pass
+
+        print_error("Failed to copy to clipboard")
+        return False
+    except Exception as e:
+        print_error(f"Error writing to clipboard: {e}")
+        return False
+
+
 def read_directory_context(dir_path: str, max_files: int = 50) -> str:
     """
     Recursively reads files from a directory and formats them as context.

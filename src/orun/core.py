@@ -126,6 +126,8 @@ def run_single_shot(
     output_file: str | None = None,
     system_prompt: str | None = None,
     dir_context: str | None = None,
+    clipboard_content: str | None = None,
+    to_clipboard: bool = False,
 ):
     """Handles a single query to the model."""
     utils.ensure_ollama_running()
@@ -150,6 +152,11 @@ def run_single_shot(
         print_error(f"Template {missing} not found")
 
     full_prompt = build.text
+
+    # Add clipboard content if provided
+    if clipboard_content:
+        clipboard_prefix = "--- Input from clipboard ---\n"
+        full_prompt = f"{clipboard_prefix}{clipboard_content}\n\n{full_prompt}" if full_prompt else f"{clipboard_prefix}{clipboard_content}"
 
     # Add stdin content if provided (pipe input)
     if stdin_content:
@@ -229,6 +236,10 @@ def run_single_shot(
                 console.print(f"\n✅ Output saved to: {output_file}", style=Colors.GREEN)
             except Exception as e:
                 print_error(f"Failed to save output to file: {e}")
+
+        # Copy to clipboard if requested
+        if to_clipboard and final_output:
+            utils.write_clipboard_text(final_output)
 
     except Exception as e:
         console.print()
