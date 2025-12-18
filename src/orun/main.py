@@ -308,6 +308,12 @@ def main():
         "--to-clipboard", action="store_true", help="Copy output to clipboard"
     )
     parser.add_argument(
+        "--temperature", type=float, help="Model temperature (0.0-2.0, default: varies by model)"
+    )
+    parser.add_argument(
+        "--top-p", type=float, help="Top-p sampling (0.0-1.0, default: varies by model)"
+    )
+    parser.add_argument(
         "--yolo", action="store_true", help="Enable YOLO mode (no confirmations)"
     )
 
@@ -367,6 +373,13 @@ def main():
         parser.print_help()
         return
 
+    # Build model options
+    model_options = {}
+    if args.temperature is not None:
+        model_options["temperature"] = args.temperature
+    if args.top_p is not None:
+        model_options["top_p"] = args.top_p
+
     # Always enable tools for single shot too
     core.run_single_shot(
         model_name,
@@ -383,6 +396,7 @@ def main():
         dir_context=dir_context,
         clipboard_content=clipboard_content,
         to_clipboard=args.to_clipboard,
+        model_options=model_options if model_options else None,
     )
 
 

@@ -128,6 +128,7 @@ def run_single_shot(
     dir_context: str | None = None,
     clipboard_content: str | None = None,
     to_clipboard: bool = False,
+    model_options: dict | None = None,
 ):
     """Handles a single query to the model."""
     utils.ensure_ollama_running()
@@ -191,7 +192,11 @@ def run_single_shot(
         # If using tools, we can't easily stream the first response because we need to parse JSON first
         if use_tools:
             response = ollama.chat(
-                model=model_name, messages=messages, tools=tool_defs, stream=False
+                model=model_name,
+                messages=messages,
+                tools=tool_defs,
+                stream=False,
+                options=model_options
             )
             msg = response["message"]
 
@@ -207,7 +212,12 @@ def run_single_shot(
                     console.print(
                         f"🤖 [{model_name}] Processing tool output...", style=Colors.CYAN
                     )
-                stream = ollama.chat(model=model_name, messages=messages, stream=True)
+                stream = ollama.chat(
+                    model=model_name,
+                    messages=messages,
+                    stream=True,
+                    options=model_options
+                )
                 final_response = handle_ollama_stream(stream, silent=bool(output_file))
                 if final_response:
                     db.add_message(conversation_id, "assistant", final_response)
@@ -220,7 +230,12 @@ def run_single_shot(
                 final_output = msg["content"]
         else:
             # Standard streaming
-            stream = ollama.chat(model=model_name, messages=messages, stream=True)
+            stream = ollama.chat(
+                model=model_name,
+                messages=messages,
+                stream=True,
+                options=model_options
+            )
             response = handle_ollama_stream(stream, silent=bool(output_file))
             if response:
                 db.add_message(conversation_id, "assistant", response)
@@ -298,7 +313,11 @@ def run_continue_shot(
         # If using tools, we can't easily stream the first response because we need to parse JSON first
         if use_tools:
             response = ollama.chat(
-                model=model_name, messages=messages, tools=tool_defs, stream=False
+                model=model_name,
+                messages=messages,
+                tools=tool_defs,
+                stream=False,
+                options=model_options
             )
             msg = response["message"]
 
@@ -314,7 +333,12 @@ def run_continue_shot(
                     console.print(
                         f"🤖 [{model_name}] Processing tool output...", style=Colors.CYAN
                     )
-                stream = ollama.chat(model=model_name, messages=messages, stream=True)
+                stream = ollama.chat(
+                    model=model_name,
+                    messages=messages,
+                    stream=True,
+                    options=model_options
+                )
                 final_response = handle_ollama_stream(stream, silent=bool(output_file))
                 if final_response:
                     db.add_message(conversation_id, "assistant", final_response)
@@ -327,7 +351,12 @@ def run_continue_shot(
                 final_output = msg["content"]
         else:
             # Standard streaming
-            stream = ollama.chat(model=model_name, messages=messages, stream=True)
+            stream = ollama.chat(
+                model=model_name,
+                messages=messages,
+                stream=True,
+                options=model_options
+            )
             response = handle_ollama_stream(stream, silent=bool(output_file))
             if response:
                 db.add_message(conversation_id, "assistant", response)
