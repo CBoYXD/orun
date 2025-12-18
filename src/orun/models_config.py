@@ -93,7 +93,14 @@ class ModelsConfig:
         try:
             # Get list of models from Ollama
             response = ollama.list()
-            ollama_models = response.get("models", [])
+
+            # Handle both dict and object responses
+            if hasattr(response, 'models'):
+                ollama_models = response.models
+            elif isinstance(response, dict):
+                ollama_models = response.get("models", [])
+            else:
+                ollama_models = []
 
             if not ollama_models:
                 console.print("No models found in Ollama.", style=Colors.YELLOW)
@@ -104,7 +111,15 @@ class ModelsConfig:
             existing_aliases = {v: k for k, v in self.models.items()}  # full_name -> alias
 
             for model_info in ollama_models:
-                full_name = model_info.get("name", "")
+                # Handle both dict and object model info
+                if hasattr(model_info, 'model'):
+                    full_name = model_info.model
+                elif hasattr(model_info, 'name'):
+                    full_name = model_info.name
+                elif isinstance(model_info, dict):
+                    full_name = model_info.get("model", model_info.get("name", ""))
+                else:
+                    full_name = ""
                 if not full_name:
                     continue
 
