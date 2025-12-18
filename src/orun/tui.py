@@ -591,8 +591,9 @@ class ChatScreen(Screen):
             image_args = tokens if tokens else []
 
             # Get image paths using the same logic as -i parameter
+            # Empty list [] means use latest image (index 1)
             try:
-                new_images = await asyncio.to_thread(utils.get_image_paths, image_args if image_args else None)
+                new_images = await asyncio.to_thread(utils.get_image_paths, image_args if image_args else [])
                 if new_images:
                     self.pending_images.extend(new_images)
                     # Display confirmation
