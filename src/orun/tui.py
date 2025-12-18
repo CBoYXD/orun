@@ -112,14 +112,8 @@ class ChatScreen(Screen):
         self.template_list_state = None
         self.template_list_widget = None
 
-        self.search_analysis_prompt = (
-            prompts_manager.get_prompt(SEARCH_ANALYSIS_PROMPT_NAME)
-            or DEFAULT_SEARCH_ANALYSIS_PROMPT
-        )
-        self.arxiv_analysis_prompt = (
-            prompts_manager.get_prompt(ARXIV_ANALYSIS_PROMPT_NAME)
-            or DEFAULT_ARXIV_ANALYSIS_PROMPT
-        )
+        self.search_analysis_prompt = prompts_manager.get_prompt(SEARCH_ANALYSIS_PROMPT_NAME)
+        self.arxiv_analysis_prompt = prompts_manager.get_prompt(ARXIV_ANALYSIS_PROMPT_NAME)
 
         if self.conversation_id:
             # Defer loading until mount so we can add widgets
