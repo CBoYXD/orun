@@ -18,24 +18,6 @@ ARXIV_ANALYSIS_PROMPT_NAME = "arxiv_analysis"
 HIDDEN_ROLE_MAP = {"hidden_user": "user"}
 HIDDEN_ROLES = set(HIDDEN_ROLE_MAP.keys())
 LIST_PAGE_SIZE = 25
-DEFAULT_SEARCH_ANALYSIS_PROMPT = (
-    "You are Orun's search analyst. Given the fetched document, produce a concise yet"
-    " detailed analysis:\n"
-    "- Start with a short overview mentioning the source.\n"
-    "- List the most important facts or claims.\n"
-    "- Highlight potential risks, opportunities, and recommended next steps.\n"
-    "- Call out gaps or uncertainties if the content is limited.\n"
-    "Keep the tone analytical and practical."
-)
-DEFAULT_ARXIV_ANALYSIS_PROMPT = (
-    "You are Orun's research paper analyst. Given the arXiv paper information, provide a comprehensive analysis:\n"
-    "- Start with a brief overview of the paper's main contribution.\n"
-    "- Summarize the key findings and methodology.\n"
-    "- Highlight the significance and potential applications.\n"
-    "- Identify limitations or areas for future work if mentioned.\n"
-    "- Suggest related topics or follow-up questions.\n"
-    "Keep the analysis accessible yet technically accurate."
-)
 
 
 class ChatMessage(Static):
