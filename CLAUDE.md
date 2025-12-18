@@ -6,9 +6,10 @@ This file provides guidance to AI assistants when working with code in this repo
 
 orun-py is a Python CLI wrapper for interacting with local LLMs via Ollama. It features:
 - **Agent Capabilities**: Can read/write files, run shell commands, search files, and fetch URLs (with user confirmation).
+- **Model Management**: JSON-based configuration with multiple shortcuts per model and custom options.
 - **YOLO Mode**: Toggle confirmation-less execution mode for trusted commands.
 - **Multimedia**: Built-in screenshot discovery and attachment.
-- **History**: SQLite-based conversation tracking.
+- **History**: SQLite-based conversation tracking (`~/.orun/history.db`).
 
 ## Build and Development Commands
 
@@ -268,6 +269,62 @@ All models in a consensus pipeline have access to agent tools (read_file, run_sh
 - Parallel: Each model can use tools independently
 
 YOLO mode works the same way in consensus as in normal mode.
+
+## Model Management
+
+Models are stored in `~/.orun/config.json` with support for multiple shortcuts per model and custom options.
+
+### Configuration Structure
+
+```json
+{
+  "models": {
+    "llama3.1:8b": {
+      "shortcuts": ["llama3.1", "llama", "l3"],
+      "options": {"temperature": 0.7}
+    },
+    "qwen3:30b": {
+      "shortcuts": ["qwen3", "qwen"],
+      "options": {}
+    }
+  },
+  "active_model": "llama3.1:8b"
+}
+```
+
+### Commands
+
+**Sync models from Ollama:**
+```bash
+orun refresh
+```
+This scans Ollama for available models and adds them to config.json. Existing shortcuts and options are preserved.
+
+**List all models:**
+```bash
+orun models
+```
+Shows all models with all their aliases.
+
+**Set active model:**
+```bash
+orun set-active llama3.1
+```
+Sets the default model to use. Accepts either full name or any shortcut.
+
+**Add shortcuts:**
+```bash
+orun shortcut llama3.1:8b llama
+orun shortcut llama3.1:8b l3
+```
+Models can have multiple shortcuts. All shortcuts can be used interchangeably with `-m` flag or in chat commands.
+
+### Features
+
+- **Multiple Shortcuts**: Each model can have multiple aliases (e.g., `llama3.1`, `llama`, `l3`)
+- **Per-Model Options**: Store custom options like temperature, top_p, etc. (reserved for future use)
+- **Persistent Configuration**: All settings saved in `~/.orun/config.json`
+- **Backward Compatible**: Old alias-based configs are automatically migrated
 
 ## Agent Tools
 Tools are enabled by default for all chat/query modes. The AI can:

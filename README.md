@@ -181,32 +181,56 @@ Features:
 The AI can also autonomously call `web_search()` and `fetch_url()` tools during conversations.
 
 ### Model Management
+Models are stored in `~/.orun/config.json` with support for multiple shortcuts per model and custom options.
+
 Sync models from Ollama:
 ```bash
 orun refresh
 ```
-List available models:
+
+List available models with all their aliases:
 ```bash
 orun models
 ```
+
 Set default active model:
 ```bash
 orun set-active llama3.1
 ```
-Create a shortcut:
+
+Add shortcuts to models (multiple shortcuts per model supported):
 ```bash
+orun shortcut llama3.1:8b llama
 orun shortcut llama3.1:8b l3
+# Now llama3.1:8b has shortcuts: ["llama3.1", "llama", "l3"]
+```
+
+**Model Configuration Structure**:
+```json
+{
+  "models": {
+    "llama3.1:8b": {
+      "shortcuts": ["llama3.1", "llama", "l3"],
+      "options": {"temperature": 0.7}
+    }
+  },
+  "active_model": "llama3.1:8b"
+}
 ```
 
 ### Conversation History
+Conversation history is stored in `~/.orun/history.db` (SQLite database).
+
 List recent conversations:
 ```bash
 orun history
 ```
+
 Continue a conversation by ID:
 ```bash
 orun c 1
 ```
+
 Continue the last conversation:
 ```bash
 orun last
