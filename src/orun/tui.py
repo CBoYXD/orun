@@ -14,6 +14,7 @@ from textual.widgets import Footer, Header, Input, Static
 
 from orun import db, prompts_manager, tools, utils
 from orun.yolo import yolo_mode
+from orun.consensus_config import consensus_config
 
 SEARCH_ANALYSIS_PROMPT_NAME = "search_analysis"
 ARXIV_ANALYSIS_PROMPT_NAME = "arxiv_analysis"
@@ -1068,6 +1069,43 @@ class ChatScreen(Screen):
             except Exception as exc:
                 self.chat_container.mount(
                     Static(f"[red]Reload failed: {exc}[/]", classes="status")
+                )
+        elif cmd == "/consensus":
+            # List or toggle consensus mode
+            if not arg:
+                # Show available consensus pipelines
+                pipelines = consensus_config.list_pipelines()
+                if pipelines:
+                    pipeline_list = "\n".join([
+                        f"  • [green]{p['name']}[/] ({p['type']}) - {p['description'][:50]}..."
+                        if len(p['description']) > 50 else
+                        f"  • [green]{p['name']}[/] ({p['type']}) - {p['description']}"
+                        for p in pipelines
+                    ])
+                    self.chat_container.mount(
+                        Static(
+                            f"[cyan]Available Consensus Pipelines:[/]\n{pipeline_list}\n\n"
+                            "[yellow]Usage: /consensus <pipeline_name>[/]",
+                            classes="status"
+                        )
+                    )
+                else:
+                    self.chat_container.mount(
+                        Static(
+                            "[yellow]No consensus pipelines found.[/]\n"
+                            "Create pipelines in ~/.orun/config.json or data/consensus/",
+                            classes="status"
+                        )
+                    )
+            else:
+                # Set consensus mode (not implemented in TUI yet - show info)
+                self.chat_container.mount(
+                    Static(
+                        f"[yellow]Consensus mode for TUI is not yet implemented.[/]\n"
+                        f"Use single-shot mode instead:\n"
+                        f"  orun \"your prompt\" --consensus {arg}",
+                        classes="status"
+                    )
                 )
         else:
             self.chat_container.mount(

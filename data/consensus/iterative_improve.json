@@ -1,0 +1,31 @@
+{
+  "description": "Draft → Critique → Improve cycle",
+  "type": "sequential",
+  "models": [
+    {
+      "name": "llama3.2:latest",
+      "role": "drafter",
+      "system_prompt": "Create an initial draft response to the question. Focus on getting the main ideas down without worrying about perfection.",
+      "options": {
+        "temperature": 0.7
+      }
+    },
+    {
+      "name": "qwen2.5-coder:latest",
+      "role": "critic",
+      "system_prompt": "Critically analyze the draft. Identify weaknesses, missing information, logical gaps, unclear explanations, and areas for improvement. Be thorough and constructive in your critique.",
+      "options": {
+        "temperature": 0.6
+      }
+    },
+    {
+      "name": "llama3.2:latest",
+      "role": "improver",
+      "system_prompt": "Based on the critique, create an improved final version that addresses all the identified issues. Maintain the strengths of the original while fixing weaknesses and adding missing information.",
+      "options": {
+        "temperature": 0.5
+      }
+    }
+  ],
+  "pass_strategy": "accumulate"
+}

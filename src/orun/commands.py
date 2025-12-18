@@ -1,6 +1,7 @@
 from orun import core, db, prompts_manager, tools
 from orun.rich_utils import console, create_table, print_table
 from orun.search_config import search_config
+from orun.consensus_config import consensus_config
 from orun.tui import OrunApp
 from orun.utils import Colors, print_error, print_success
 
@@ -258,3 +259,98 @@ def cmd_fetch(url: str):
     console.print(f"🌐 Fetching: {url}", style=Colors.CYAN)
     result = tools.fetch_url(url)
     console.print("\n" + result, style=Colors.GREY)
+
+
+def cmd_consensus_list():
+    """Lists all available consensus pipelines using a Rich table."""
+    pipelines = consensus_config.list_pipelines()
+    if pipelines:
+        table = create_table(
+            "Available Consensus Pipelines",
+            ["Name", "Type", "Models", "Description"]
+        )
+        for pipeline in pipelines:
+            table.add_row(
+                pipeline["name"],
+                pipeline["type"],
+                str(pipeline["models_count"]),
+                pipeline["description"][:60] + "..." if len(pipeline["description"]) > 60 else pipeline["description"],
+                style=Colors.GREEN
+            )
+        print_table(table)
+        console.print(
+            "\nUse: orun \"your prompt\" --consensus <name>",
+            style=Colors.YELLOW
+        )
+        console.print(
+            "Or in chat: /consensus <name>",
+            style=Colors.YELLOW
+        )
+    else:
+        console.print("No consensus pipelines found.", style=Colors.YELLOW)
+        console.print(
+            "Create pipelines in ~/.orun/config.json or data/consensus/",
+            style=Colors.GREY
+        )
+
+
+def cmd_consensus_config():
+    """Show consensus configuration path and info."""
+    import platform
+    import subprocess
+
+    config_path = consensus_config.config_path
+
+    console.print("\n[cyan]Consensus Configuration:[/cyan]")
+    console.print(f"  Config file: {config_path}", style=Colors.GREY)
+
+    if config_path.exists():
+        console.print(f"  Status: [green]Found[/green]")
+
+        # Count user-defined pipelines
+        import json
+        try:
+            with open(config_path, "r", encoding="utf-8") as f:
+                config = json.load(f)
+                user_pipelines = config.get("consensus", {}).get("pipelines", {})
+                console.print(
+                    f"  User pipelines: {len(user_pipelines)}",
+                    style=Colors.GREY
+                )
+        except Exception:
+            pass
+    else:
+        console.print(f"  Status: [yellow]Not found (will be created on first use)[/yellow]")
+
+    # Show default pipelines location
+    console.print(f"  Default pipelines: {consensus_config.data_dir}", style=Colors.GREY)
+    if consensus_config.data_dir.exists():
+        default_count = len(list(consensus_config.data_dir.glob("*.json")))
+        console.print(
+            f"  Default count: {default_count}",
+            style=Colors.GREY
+        )
+
+    console.print()
+
+    # Open in editor if exists
+    if config_path.exists():
+        should_open = console.input(
+            "[yellow]Open config file in default editor? [y/N]: [/yellow]"
+        ).lower()
+
+        if should_open == "y":
+            try:
+                if platform.system() == "Windows":
+                    subprocess.run(["notepad", str(config_path)])
+                elif platform.system() == "Darwin":
+                    subprocess.run(["open", str(config_path)])
+                else:
+                    subprocess.run(["xdg-open", str(config_path)])
+            except Exception as e:
+                print_error(f"Could not open editor: {e}")
+    else:
+        console.print(
+            "Run any consensus command to create the config file.",
+            style=Colors.YELLOW
+        )

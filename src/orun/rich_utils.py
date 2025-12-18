@@ -39,6 +39,7 @@ class Colors:
     CYAN = "cyan"
     WHITE = "white"
     BLACK = "black"
+    GREY = "bright_black"
     BOLD_RED = "bold red"
     BOLD_GREEN = "bold green"
     BOLD_YELLOW = "bold yellow"

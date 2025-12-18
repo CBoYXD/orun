@@ -1,0 +1,27 @@
+{
+  "description": "Three attempts, show all results",
+  "type": "parallel",
+  "models": [
+    {
+      "name": "llama3.2:latest",
+      "options": {
+        "temperature": 0.8
+      }
+    },
+    {
+      "name": "llama3.2:latest",
+      "options": {
+        "temperature": 0.8
+      }
+    },
+    {
+      "name": "llama3.2:latest",
+      "options": {
+        "temperature": 0.8
+      }
+    }
+  ],
+  "aggregation": {
+    "method": "best_of"
+  }
+}

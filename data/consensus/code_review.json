@@ -1,0 +1,23 @@
+{
+  "description": "Generate code then review it",
+  "type": "sequential",
+  "models": [
+    {
+      "name": "qwen2.5-coder:latest",
+      "role": "coder",
+      "system_prompt": "Generate clean, efficient, well-documented code. Follow best practices and ensure the code is production-ready.",
+      "options": {
+        "temperature": 0.3
+      }
+    },
+    {
+      "name": "llama3.2:latest",
+      "role": "reviewer",
+      "system_prompt": "Review the code for bugs, improvements, security issues, and best practices. Provide constructive feedback and suggestions for improvement.",
+      "options": {
+        "temperature": 0.5
+      }
+    }
+  ],
+  "pass_strategy": "accumulate"
+}

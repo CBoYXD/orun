@@ -76,6 +76,8 @@ orun shortcut <m> <s>      # Create shortcut for model
 orun history               # List recent conversations
 orun prompts               # List available prompt templates
 orun strategies            # List available strategy templates
+orun consensus             # List available consensus pipelines
+orun consensus-config      # Configure consensus pipelines
 orun config-search         # View Google Search API configuration
 orun config-search <key> <cse_id>  # Set Google Search API credentials
 
@@ -117,6 +119,133 @@ In interactive chat, you can apply templates on-the-fly:
 orun prompts              # List all prompt templates
 orun strategies           # List all strategy templates
 ```
+
+## Consensus Systems
+
+orun supports "consensus" mode where multiple models work together to generate better responses. This allows:
+- **Sequential pipelines**: Models run one after another, each building on previous outputs
+- **Parallel aggregation**: Multiple models analyze the same prompt, then results are synthesized
+
+### Available Consensus Pipelines
+
+Default pipelines are provided in `data/consensus/`:
+
+1. **code_review** (sequential)
+   - Step 1: Code generator creates clean, efficient code
+   - Step 2: Reviewer analyzes for bugs and improvements
+   - Use case: Generate and review code in one command
+
+2. **multi_expert** (parallel)
+   - Multiple models analyze the same question independently
+   - Synthesizer combines insights from all responses
+   - Use case: Get diverse perspectives on complex questions
+
+3. **research_paper** (sequential)
+   - Step 1: Researcher gathers information (can use web_search)
+   - Step 2: Outliner creates detailed paper structure
+   - Step 3: Writer composes comprehensive paper
+   - Use case: Research and write papers automatically
+
+4. **iterative_improve** (sequential)
+   - Step 1: Drafter creates initial response
+   - Step 2: Critic identifies weaknesses
+   - Step 3: Improver creates final version
+   - Use case: Iterative refinement for quality
+
+5. **best_of_three** (parallel)
+   - Same model runs 3 times with high temperature
+   - Shows all responses for comparison
+   - Use case: Generate multiple creative options
+
+### Using Consensus
+
+```bash
+# List available pipelines
+orun consensus
+
+# Configure pipelines
+orun consensus-config
+
+# Use in single-shot mode
+orun "Write a REST API for user management" --consensus code_review
+orun "Analyze microservices pros/cons" -C multi_expert
+
+# With options
+orun "Research quantum computing" -C research_paper --yolo
+orun "Create a story" -C best_of_three -o story.txt
+```
+
+### In Chat Mode
+
+```bash
+orun chat
+> /consensus              # List available pipelines
+> /consensus code_review  # Info about using consensus (not yet implemented in TUI)
+```
+
+Note: Full consensus integration in interactive chat mode is planned for a future release. Currently, use single-shot mode (`orun "prompt" -C pipeline`) for consensus features.
+
+### Creating Custom Consensus Pipelines
+
+Add custom pipelines in `~/.orun/config.json`:
+
+```json
+{
+  "consensus": {
+    "pipelines": {
+      "my_pipeline": {
+        "description": "Custom workflow",
+        "type": "sequential",
+        "models": [
+          {
+            "name": "qwen2.5-coder:latest",
+            "role": "analyzer",
+            "system_prompt": "Analyze the code and identify issues",
+            "options": {"temperature": 0.3}
+          },
+          {
+            "name": "llama3.2:latest",
+            "role": "fixer",
+            "system_prompt": "Fix the identified issues",
+            "options": {"temperature": 0.5}
+          }
+        ],
+        "pass_strategy": "accumulate"
+      }
+    }
+  }
+}
+```
+
+### Configuration Options
+
+**Sequential pipelines:**
+- `type`: "sequential"
+- `models`: Array of model configurations
+  - `name`: Full model name (e.g., "llama3.2:latest")
+  - `role`: Descriptive name for this step (optional)
+  - `system_prompt`: Instructions for this model (optional)
+  - `options`: Model parameters like temperature, top_p
+- `pass_strategy`: How context is passed between models
+  - `accumulate`: Pass all previous messages (default)
+  - `last_only`: Only pass last model's output
+  - `synthesis`: Synthesize all previous outputs
+
+**Parallel pipelines:**
+- `type`: "parallel"
+- `models`: Array of model configurations (simpler, usually just name and options)
+- `aggregation`: How to combine results
+  - `method`: "synthesis" or "best_of"
+  - `synthesizer_model`: Model to use for synthesis (if method is "synthesis")
+  - `synthesis_prompt`: Custom prompt for synthesis (optional)
+
+### Tools in Consensus
+
+All models in a consensus pipeline have access to agent tools (read_file, run_shell_command, etc.) if tools are enabled. This allows models to:
+- Sequential: Each step can use tools, and results are passed to next model
+- Parallel: Each model can use tools independently
+
+YOLO mode works the same way in consensus as in normal mode.
 
 ## Agent Tools
 Tools are enabled by default for all chat/query modes. The AI can:

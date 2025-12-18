@@ -1,0 +1,29 @@
+{
+  "description": "Multiple models analyze, then synthesize",
+  "type": "parallel",
+  "models": [
+    {
+      "name": "llama3.2:latest",
+      "options": {
+        "temperature": 0.7
+      }
+    },
+    {
+      "name": "qwen2.5-coder:latest",
+      "options": {
+        "temperature": 0.7
+      }
+    },
+    {
+      "name": "mistral:latest",
+      "options": {
+        "temperature": 0.7
+      }
+    }
+  ],
+  "aggregation": {
+    "method": "synthesis",
+    "synthesizer_model": "llama3.2:latest",
+    "synthesis_prompt": "You have received multiple expert responses to the same question. Carefully analyze them, identify common insights and disagreements, then provide a comprehensive synthesis that combines the best aspects of each response."
+  }
+}

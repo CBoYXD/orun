@@ -6,6 +6,7 @@ from orun import commands, core, db, utils
 from orun.rich_utils import console
 from orun.tui import OrunApp
 from orun.utils import Colors, print_warning
+from orun import consensus
 
 
 @utils.handle_cli_errors
@@ -113,6 +114,14 @@ def main():
                 return
 
             commands.cmd_fetch(sys.argv[2])
+            return
+
+        if cmd == "consensus":
+            commands.cmd_consensus_list()
+            return
+
+        if cmd == "consensus-config":
+            commands.cmd_consensus_config()
             return
 
         if cmd == "chat":
@@ -283,6 +292,8 @@ Commands:
   arxiv <query>     Search or fetch arXiv papers
   search <query>    Search the web (Google/DuckDuckGo)
   fetch <url>       Fetch and display web content
+  consensus         List available consensus pipelines
+  consensus-config  Configure consensus pipelines
   models            List available models
   refresh           Sync models from Ollama
   shortcut          Change model shortcut
@@ -296,6 +307,7 @@ Commands:
 
 Single-shot options:
   -m <model>        Model to use
+  -C <pipeline>     Use consensus pipeline instead of single model
   -p <prompt>       Prompt template(s) (can use multiple times)
   -s <strategy>     Strategy template(s) (can use multiple times)
   -f <file>         File(s) as context (supports globs)
@@ -324,6 +336,11 @@ Examples:
   orun arxiv "transformer attention"
   orun search "python best practices"
   orun fetch https://example.com
+
+  # Consensus pipelines
+  orun consensus
+  orun "Write a REST API" -C code_review
+  orun "Analyze microservices" -C multi_expert
 
   # Output options
   orun "generate client" -o client.py
@@ -379,6 +396,9 @@ Examples:
     )
     parser.add_argument(
         "--yolo", action="store_true", help="Enable YOLO mode (no confirmations)"
+    )
+    parser.add_argument(
+        "-C", "--consensus", type=str, metavar="PIPELINE", help="Use consensus pipeline instead of single model"
     )
 
     args = parser.parse_args()
@@ -444,25 +464,50 @@ Examples:
     if args.top_p is not None:
         model_options["top_p"] = args.top_p
 
-    # Always enable tools for single shot too
-    core.run_single_shot(
-        model_name,
-        user_prompt,
-        image_paths,
-        use_tools=True,
-        yolo=args.yolo,
-        prompt_template=args.use_prompt,
-        strategy_template=args.use_strategy,
-        file_paths=file_paths,
-        stdin_content=stdin_content,
-        output_file=args.output,
-        system_prompt=args.system,
-        dir_context=dir_context,
-        clipboard_content=clipboard_content,
-        to_clipboard=args.to_clipboard,
-        model_options=model_options if model_options else None,
-        quiet=args.quiet,
-    )
+    # Check if using consensus mode
+    if args.consensus:
+        # Use consensus pipeline instead of single model
+        # Note: Some single-shot options may not apply to consensus
+        if args.use_prompt or args.use_strategy:
+            print_warning("Warning: Prompt/strategy templates are not applied in consensus mode.")
+            print_warning("Use system prompts in the pipeline configuration instead.")
+
+        # Run consensus
+        output = consensus.run_consensus(
+            pipeline_name=args.consensus,
+            user_prompt=user_prompt,
+            image_paths=image_paths,
+            system_prompt=args.system,
+            tools_enabled=True,
+            yolo_mode=args.yolo,
+            model_options=model_options if model_options else None,
+        )
+
+        # Handle output options
+        if args.output:
+            utils.write_to_file(args.output, output)
+        if args.to_clipboard:
+            utils.copy_to_clipboard(output)
+    else:
+        # Regular single-shot mode
+        core.run_single_shot(
+            model_name,
+            user_prompt,
+            image_paths,
+            use_tools=True,
+            yolo=args.yolo,
+            prompt_template=args.use_prompt,
+            strategy_template=args.use_strategy,
+            file_paths=file_paths,
+            stdin_content=stdin_content,
+            output_file=args.output,
+            system_prompt=args.system,
+            dir_context=dir_context,
+            clipboard_content=clipboard_content,
+            to_clipboard=args.to_clipboard,
+            model_options=model_options if model_options else None,
+            quiet=args.quiet,
+        )
 
 
 if __name__ == "__main__":
