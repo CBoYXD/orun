@@ -279,9 +279,9 @@ def main():
         updated_files.append("src/orun/__init__.py")
 
     # Print result
-    print(f"✓ Version updated: {current_version_str} -> {new_version_str}")
+    print(f"Version updated: {current_version_str} -> {new_version_str}")
     if updated_files:
-        print(f"  Updated files: {', '.join(updated_files)}")
+        print(f"Updated files: {', '.join(updated_files)}")
 
 
 if __name__ == "__main__":

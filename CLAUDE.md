@@ -44,27 +44,74 @@ orun-py uses [PEP 440](https://peps.python.org/pep-0440/) versioning with suppor
 
 ### Release Commands (using just)
 
+The universal command format is: `just publish <part> <type> "message"`
+- **part**: `patch`, `minor`, `major`, or `current` (keeps same version numbers)
+- **type**: `stable`, `alpha`, `beta`, `rc`, or `post`
+
 ```bash
-# Standard releases
-just publish "Fix bug X"              # Patch: 1.2.3 -> 1.2.4
-just publish-minor "Add feature Y"    # Minor: 1.2.3 -> 1.3.0
-just publish-major "Breaking change"  # Major: 1.2.3 -> 2.0.0
+# ============================================================
+# STANDARD RELEASES (stable versions)
+# ============================================================
+just publish patch stable "Fix bug X"         # 1.2.3 -> 1.2.4
+just publish minor stable "Add feature Y"     # 1.2.3 -> 1.3.0
+just publish major stable "Breaking change"   # 1.2.3 -> 2.0.0
 
-# Pre-releases
-just publish-alpha "Test new feature" # Alpha: 1.2.3 -> 1.2.4a1 or 1.2.3a1 -> 1.2.3a2
-just publish-beta "Beta testing"      # Beta: 1.2.3 -> 1.2.4b1 or 1.2.3b1 -> 1.2.3b2
-just publish-rc "Release candidate"   # RC: 1.2.3 -> 1.2.4rc1 or 1.2.3rc1 -> 1.2.3rc2
+# ============================================================
+# PRE-RELEASES: Create first alpha/beta/rc
+# ============================================================
+# These bump the patch version and add pre-release suffix
+just publish patch alpha "Start alpha testing"    # 1.2.3 -> 1.2.4a1
+just publish patch beta "Start beta testing"      # 1.2.3 -> 1.2.4b1
+just publish patch rc "Start release candidate"   # 1.2.3 -> 1.2.4rc1
 
-# Post releases and finalization
-just publish-post "Hotfix"            # Post: 1.2.3 -> 1.2.3.post1
-just publish-release "Final release"  # Finalize: 1.2.3a1 -> 1.2.3
+# Can also bump minor/major with pre-release:
+just publish minor alpha "New feature alpha"      # 1.2.3 -> 1.3.0a1
+just publish major beta "Breaking change beta"    # 1.2.3 -> 2.0.0b1
 
-# Set specific version
-just publish-set 2.0.0 "Major rewrite"
+# ============================================================
+# PRE-RELEASES: Bump pre-release number (a1→a2, b1→b2, rc1→rc2)
+# ============================================================
+# Use 'current' to keep version numbers and only increment pre-release number
+just publish current alpha "Fix alpha bugs"       # 1.2.4a1 -> 1.2.4a2
+just publish current alpha "More alpha fixes"     # 1.2.4a2 -> 1.2.4a3
 
-# Bump version without publishing (for testing)
-just bump patch      # Just update version number
-just bump alpha      # Bump to alpha
+just publish current beta "Fix beta bugs"         # 1.2.4b1 -> 1.2.4b2
+just publish current beta "Beta improvements"     # 1.2.4b2 -> 1.2.4b3
+
+just publish current rc "Fix RC bugs"             # 1.2.4rc1 -> 1.2.4rc2
+just publish current rc "Final RC fixes"          # 1.2.4rc2 -> 1.2.4rc3
+
+# ============================================================
+# POST RELEASES: Hotfixes for already published stable versions
+# ============================================================
+just publish current post "Hotfix for critical bug"   # 1.2.4 -> 1.2.4.post1
+just publish current post "Another hotfix"            # 1.2.4.post1 -> 1.2.4.post2
+
+# ============================================================
+# FINALIZE: Remove pre-release suffix and publish stable
+# ============================================================
+just publish current stable "Final release"       # 1.2.4a3 -> 1.2.4
+just publish current stable "RC approved"         # 1.2.4rc3 -> 1.2.4
+
+# ============================================================
+# EXAMPLES: Complete workflow scenarios
+# ============================================================
+
+# Scenario 1: Standard patch release
+just publish patch stable "Fix authentication bug"    # 1.2.3 -> 1.2.4
+
+# Scenario 2: Alpha → Beta → RC → Stable
+just publish patch alpha "Start testing new API"      # 1.2.3 -> 1.2.4a1
+just publish current alpha "Fix API bugs"             # 1.2.4a1 -> 1.2.4a2
+just publish current beta "Move to beta"              # 1.2.4a2 -> 1.2.4b1
+just publish current beta "Beta fixes"                # 1.2.4b1 -> 1.2.4b2
+just publish current rc "Release candidate"           # 1.2.4b2 -> 1.2.4rc1
+just publish current rc "Final fixes"                 # 1.2.4rc1 -> 1.2.4rc2
+just publish current stable "Stable release"          # 1.2.4rc2 -> 1.2.4
+
+# Scenario 3: Hotfix after stable release
+just publish current post "Security hotfix"           # 1.2.4 -> 1.2.4.post1
+just publish current post "Another urgent fix"        # 1.2.4.post1 -> 1.2.4.post2
 ```
 
 ### Manual Release Workflow
@@ -92,9 +139,38 @@ git push
 
 ### Version Bumping Logic
 
-- **Patch**: Increments patch number (e.g., `1.2.3` -> `1.2.4`, `1.2.14` -> `1.2.15`)
-- **Alpha/Beta/RC**: Increments pre-release number if already in that phase
-- **Finalize**: Removes pre-release suffix (e.g., `1.2.3a1` -> `1.2.3`)
+The version manager intelligently handles bumping based on current version state:
+
+**Standard Version Bumps (patch/minor/major):**
+- **Patch**: `1.2.3` → `1.2.4` (increments patch number)
+- **Minor**: `1.2.3` → `1.3.0` (increments minor, resets patch)
+- **Major**: `1.2.3` → `2.0.0` (increments major, resets minor and patch)
+
+**Pre-release Logic (alpha/beta/rc):**
+- If current version is **NOT** in that pre-release phase: Bumps patch and adds pre-release suffix
+  - `1.2.3` + `alpha` → `1.2.4a1`
+  - `1.2.3a2` + `beta` → `1.2.4b1` (switches to beta)
+- If current version **IS** in that pre-release phase: Only increments pre-release number
+  - `1.2.4a1` + `alpha` → `1.2.4a2` (bump alpha number)
+  - `1.2.4b1` + `beta` → `1.2.4b2` (bump beta number)
+  - `1.2.4rc1` + `rc` → `1.2.4rc2` (bump rc number)
+
+**Post-release Logic:**
+- If current version has **NO** post suffix: Adds `.post1`
+  - `1.2.4` + `post` → `1.2.4.post1`
+- If current version **HAS** post suffix: Increments post number
+  - `1.2.4.post1` + `post` → `1.2.4.post2`
+
+**Finalize (stable):**
+- Removes pre-release suffix without changing version numbers
+  - `1.2.4a1` + `stable` → `1.2.4`
+  - `1.2.4rc3` + `stable` → `1.2.4`
+
+**Using 'current' part:**
+- `current` keeps the base version numbers unchanged, only modifies pre-release/post suffixes
+- Useful for incrementing pre-release numbers or switching between pre-release types
+  - `just publish current alpha "msg"` on `1.2.4a1` → `1.2.4a2`
+  - `just publish current beta "msg"` on `1.2.4a2` → `1.2.4b1`
 
 ## Project Structure
 
