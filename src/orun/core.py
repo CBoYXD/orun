@@ -197,8 +197,8 @@ def run_single_shot(
         {"role": "user", "content": full_prompt, "images": image_paths or None}
     )
 
-    # Tool definitions
-    tool_defs = tools.TOOL_DEFINITIONS if use_tools else None
+    # Tool definitions (filtered by model type)
+    tool_defs = tools.get_tools_for_model(model_name) if use_tools else None
 
     # Variable to hold the final output
     final_output = ""
@@ -330,8 +330,8 @@ def run_continue_shot(
             }
         )
 
-    # Tool definitions
-    tool_defs = tools.TOOL_DEFINITIONS if use_tools else None
+    # Tool definitions (filtered by model type)
+    tool_defs = tools.get_tools_for_model(model_name) if use_tools else None
 
     # Variable to hold the final output
     final_output = ""

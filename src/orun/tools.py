@@ -1051,27 +1051,22 @@ TOOL_DEFINITIONS = [
 ]
 
 
-def get_tools_for_model(model_name: str, use_function_model: bool = False) -> list:
+def get_tools_for_model(model_name: str) -> list:
     """
     Get appropriate tools for a specific model.
 
     Logic:
-    - If use_function_model is False: all models get all tools (normal behavior)
-    - If use_function_model is True:
-        - Regular models: only get call_function_model
-        - FunctionGemma: gets all real tools (except call_function_model)
+    - FunctionGemma models: get all real tools (except call_function_model)
+    - Regular models: only get call_function_model
+
+    This ensures all tool operations go through FunctionGemma specialist.
 
     Args:
         model_name: Name of the model
-        use_function_model: Whether FunctionGemma delegation is enabled
 
     Returns:
         List of tool definitions appropriate for this model
     """
-    if not use_function_model:
-        # Normal behavior: all models get all tools
-        return TOOL_DEFINITIONS
-
     is_function_gemma = "functiongemma" in model_name.lower() or "function-gemma" in model_name.lower()
 
     if is_function_gemma:

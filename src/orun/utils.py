@@ -99,28 +99,32 @@ def ensure_function_gemma_available(auto_download: bool = True) -> bool:
         # Ask user if they want to download
         console.print("\n[yellow]FunctionGemma model not found.[/yellow]")
         console.print(
-            "[dim]FunctionGemma is a specialized 2B model optimized for tool calling.[/dim]"
+            "[dim]FunctionGemma is a specialized 270m model optimized for tool calling.[/dim]"
         )
         console.print("[dim]It will significantly improve tool usage accuracy.[/dim]\n")
 
-        response = console.input(
-            "[cyan]Download FunctionGemma 2B model? (~1.6GB) [y/N]: [/cyan]"
-        ).lower()
+        response = (
+            console.input(
+                "[cyan]Download FunctionGemma 270m model? (~270MB) [Y/n]: [/cyan]"
+            )
+            .lower()
+            .strip()
+        )
 
-        if response != "y":
+        if response and response not in ["y", "yes"]:
             console.print(
                 "[yellow]FunctionGemma delegation disabled. Using direct tool calling.[/yellow]"
             )
             return False
 
         # Download the model
-        console.print("\n[cyan]Downloading functiongemma:2b...[/cyan]")
+        console.print("\n[cyan]Downloading functiongemma:270m...[/cyan]")
         console.print("[dim]This may take a few minutes...[/dim]\n")
 
         try:
             # Use ollama pull to download
             result = subprocess.run(
-                ["ollama", "pull", "functiongemma:2b"],
+                ["ollama", "pull", "functiongemma:270m"],
                 capture_output=False,
                 text=True,
             )
@@ -523,9 +527,17 @@ def scan_project_context(path: str = ".", max_files: int = 30) -> str:
 
         # Check for key config files
         config_files = [
-            "pyproject.toml", "package.json", "Cargo.toml", "go.mod",
-            "requirements.txt", "setup.py", "Makefile", "justfile",
-            ".env.example", "docker-compose.yml", "Dockerfile"
+            "pyproject.toml",
+            "package.json",
+            "Cargo.toml",
+            "go.mod",
+            "requirements.txt",
+            "setup.py",
+            "Makefile",
+            "justfile",
+            ".env.example",
+            "docker-compose.yml",
+            "Dockerfile",
         ]
         found_configs = []
         for config in config_files:
@@ -540,9 +552,20 @@ def scan_project_context(path: str = ".", max_files: int = 30) -> str:
         context_parts.append("## Directory Structure\n```")
 
         exclude_dirs = {
-            ".git", "__pycache__", "node_modules", ".venv", "venv",
-            "dist", "build", ".cache", ".pytest_cache", "target",
-            ".ruff_cache", ".mypy_cache", "eggs", ".eggs"
+            ".git",
+            "__pycache__",
+            "node_modules",
+            ".venv",
+            "venv",
+            "dist",
+            "build",
+            ".cache",
+            ".pytest_cache",
+            "target",
+            ".ruff_cache",
+            ".mypy_cache",
+            "eggs",
+            ".eggs",
         }
 
         def tree(dir_path: Path, prefix: str = "", depth: int = 0, max_depth: int = 3):
@@ -550,9 +573,17 @@ def scan_project_context(path: str = ".", max_files: int = 30) -> str:
                 return []
             lines = []
             try:
-                items = sorted(dir_path.iterdir(), key=lambda x: (not x.is_dir(), x.name.lower()))
-                dirs = [i for i in items if i.is_dir() and i.name not in exclude_dirs and not i.name.startswith('.')]
-                files = [i for i in items if i.is_file() and not i.name.startswith('.')]
+                items = sorted(
+                    dir_path.iterdir(), key=lambda x: (not x.is_dir(), x.name.lower())
+                )
+                dirs = [
+                    i
+                    for i in items
+                    if i.is_dir()
+                    and i.name not in exclude_dirs
+                    and not i.name.startswith(".")
+                ]
+                files = [i for i in items if i.is_file() and not i.name.startswith(".")]
 
                 # Limit items per level
                 dirs = dirs[:10]
@@ -574,7 +605,17 @@ def scan_project_context(path: str = ".", max_files: int = 30) -> str:
         context_parts.append("```\n")
 
         # Key source files summary
-        source_extensions = {".py", ".js", ".ts", ".go", ".rs", ".java", ".c", ".cpp", ".h"}
+        source_extensions = {
+            ".py",
+            ".js",
+            ".ts",
+            ".go",
+            ".rs",
+            ".java",
+            ".c",
+            ".cpp",
+            ".h",
+        }
         source_files = []
         for ext in source_extensions:
             source_files.extend(project_path.rglob(f"*{ext}"))
@@ -583,8 +624,7 @@ def scan_project_context(path: str = ".", max_files: int = 30) -> str:
 
         # Filter out excluded dirs
         source_files = [
-            f for f in source_files
-            if not any(ex in str(f) for ex in exclude_dirs)
+            f for f in source_files if not any(ex in str(f) for ex in exclude_dirs)
         ][:30]
 
         if source_files:

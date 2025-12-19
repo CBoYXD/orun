@@ -14,6 +14,13 @@ def main():
 
     utils.setup_console()
 
+    # Ensure Ollama is running and FunctionGemma is available (Mandatory)
+    utils.ensure_ollama_running()
+    if not utils.ensure_function_gemma_available(auto_download=True):
+        console.print("\n[red]CRITICAL: FunctionGemma model is required.[/red]")
+        console.print("[red]The application cannot function without this model.[/red]")
+        sys.exit(1)
+
     db.initialize()
 
     models = models_config.get_models()
@@ -120,10 +127,11 @@ def main():
             parser.add_argument("id", type=int, help="Conversation ID to export")
             parser.add_argument("-o", "--output", help="Output file path")
             parser.add_argument(
-                "-f", "--format",
+                "-f",
+                "--format",
                 choices=["json", "md", "markdown"],
                 default="json",
-                help="Export format (default: json)"
+                help="Export format (default: json)",
             )
             args = parser.parse_args(sys.argv[2:])
             commands.cmd_export(args.id, args.output, args.format)
@@ -192,9 +200,14 @@ def main():
                         profile_prompts = profile_prompts + profile.included_prompts
                     # User's strategy takes precedence
                     profile_strategy = profile.strategy
-                    console.print(f"Using profile: {args.profile} ({len(profile.included_prompts)} prompts)", style=Colors.CYAN)
+                    console.print(
+                        f"Using profile: {args.profile} ({len(profile.included_prompts)} prompts)",
+                        style=Colors.CYAN,
+                    )
                 else:
-                    print_warning(f"Profile '{args.profile}' not found. Run 'orun profiles' to see available profiles.")
+                    print_warning(
+                        f"Profile '{args.profile}' not found. Run 'orun profiles' to see available profiles."
+                    )
 
             # Resolve model
 
@@ -563,13 +576,20 @@ Commands:
                 # User's strategy takes precedence
                 profile_strategy = profile.strategy
                 if not args.quiet:
-                    console.print(f"Using profile: {args.profile} ({len(profile.included_prompts)} prompts)", style=Colors.CYAN)
+                    console.print(
+                        f"Using profile: {args.profile} ({len(profile.included_prompts)} prompts)",
+                        style=Colors.CYAN,
+                    )
             else:
-                print_warning(f"Profile '{args.profile}' not found. Run 'orun profiles' to see available profiles.")
+                print_warning(
+                    f"Profile '{args.profile}' not found. Run 'orun profiles' to see available profiles."
+                )
 
         # Merge profile prompts with command-line prompts
         merged_prompts = profile_prompts + (args.use_prompt or [])
-        merged_strategy = args.use_strategy or ([profile_strategy] if profile_strategy else None)
+        merged_strategy = args.use_strategy or (
+            [profile_strategy] if profile_strategy else None
+        )
 
         # Regular single-shot mode
         core.run_single_shot(
