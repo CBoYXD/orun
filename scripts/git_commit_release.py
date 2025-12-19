@@ -14,7 +14,8 @@ def main():
 
     try:
         content = Path("pyproject.toml").read_text(encoding="utf-8")
-        match = re.search(r'version\s*=\s*"(\d+\.\d+\.\d+)"', content)
+        # Updated regex to match PEP 440 versions (including alpha, beta, rc, post)
+        match = re.search(r'version\s*=\s*"([^"]+)"', content)
         if not match:
             print("Error: version not found in pyproject.toml")
             sys.exit(1)

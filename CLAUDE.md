@@ -32,10 +32,69 @@ uv run orun "your prompt"
 
 ## Versioning and Release Workflow
 
-1. **Test functionality** by running `orun` command.
-2. **Update version** in `pyproject.toml`.
-3. **Build**: `uv build`
-4. **Publish**: `uv publish`
+orun-py uses [PEP 440](https://peps.python.org/pep-0440/) versioning with support for pre-releases and post-releases.
+
+### Version Types
+
+- **Standard releases**: `1.2.3`
+- **Alpha**: `1.2.3a1`, `1.2.3a2` (early testing)
+- **Beta**: `1.2.3b1`, `1.2.3b2` (feature complete, needs testing)
+- **Release Candidate**: `1.2.3rc1`, `1.2.3rc2` (final testing)
+- **Post releases**: `1.2.3.post1` (hotfixes)
+
+### Release Commands (using just)
+
+```bash
+# Standard releases
+just publish "Fix bug X"              # Patch: 1.2.3 -> 1.2.4
+just publish-minor "Add feature Y"    # Minor: 1.2.3 -> 1.3.0
+just publish-major "Breaking change"  # Major: 1.2.3 -> 2.0.0
+
+# Pre-releases
+just publish-alpha "Test new feature" # Alpha: 1.2.3 -> 1.2.4a1 or 1.2.3a1 -> 1.2.3a2
+just publish-beta "Beta testing"      # Beta: 1.2.3 -> 1.2.4b1 or 1.2.3b1 -> 1.2.3b2
+just publish-rc "Release candidate"   # RC: 1.2.3 -> 1.2.4rc1 or 1.2.3rc1 -> 1.2.3rc2
+
+# Post releases and finalization
+just publish-post "Hotfix"            # Post: 1.2.3 -> 1.2.3.post1
+just publish-release "Final release"  # Finalize: 1.2.3a1 -> 1.2.3
+
+# Set specific version
+just publish-set 2.0.0 "Major rewrite"
+
+# Bump version without publishing (for testing)
+just bump patch      # Just update version number
+just bump alpha      # Bump to alpha
+```
+
+### Manual Release Workflow
+
+If not using `just`:
+
+```bash
+# 1. Update version
+python scripts/version_manager.py patch   # or alpha, beta, rc, post, etc.
+
+# 2. Sync dependencies
+uv sync
+
+# 3. Build
+uv build
+
+# 4. Publish
+uv publish
+
+# 5. Commit and push
+git add .
+python scripts/git_commit_release.py "Your changes"
+git push
+```
+
+### Version Bumping Logic
+
+- **Custom rule**: `X.Y.9` -> `X.(Y+1).0` (patch 9 rolls to next minor)
+- **Alpha/Beta/RC**: Increments pre-release number if already in that phase
+- **Finalize**: Removes pre-release suffix (e.g., `1.2.3a1` -> `1.2.3`)
 
 ## Project Structure
 
