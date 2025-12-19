@@ -178,13 +178,21 @@ def main():
             image_paths = utils.get_image_paths(args.images)
 
             # Load profile if specified
-            profile_prompts = None
+            from orun import profiles_manager
+
+            # Always load system profile (can be overridden by user)
+            system_profile = profiles_manager.get_profile("system")
+            profile_prompts = system_profile.included_prompts if system_profile else []
             profile_strategy = None
+
+            # Load user-specified profile and merge with system profile
             if args.profile:
-                from orun import profiles_manager
                 profile = profiles_manager.get_profile(args.profile)
                 if profile:
-                    profile_prompts = profile.included_prompts
+                    # Merge prompts (system first, then user's profile)
+                    if profile.included_prompts:
+                        profile_prompts = profile_prompts + profile.included_prompts
+                    # User's strategy takes precedence
                     profile_strategy = profile.strategy
                     console.print(f"Using profile: {args.profile} ({len(profile.included_prompts)} prompts)", style=Colors.CYAN)
                 else:
@@ -542,13 +550,21 @@ Commands:
             utils.copy_to_clipboard(output)
     else:
         # Load profile if specified
-        profile_prompts = []
+        from orun import profiles_manager
+
+        # Always load system profile (can be overridden by user)
+        system_profile = profiles_manager.get_profile("system")
+        profile_prompts = system_profile.included_prompts if system_profile else []
         profile_strategy = None
+
+        # Load user-specified profile and merge with system profile
         if args.profile:
-            from orun import profiles_manager
             profile = profiles_manager.get_profile(args.profile)
             if profile:
-                profile_prompts = profile.included_prompts
+                # Merge prompts (system first, then user's profile)
+                if profile.included_prompts:
+                    profile_prompts = profile_prompts + profile.included_prompts
+                # User's strategy takes precedence
                 profile_strategy = profile.strategy
                 if not args.quiet:
                     console.print(f"Using profile: {args.profile} ({len(profile.included_prompts)} prompts)", style=Colors.CYAN)

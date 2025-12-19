@@ -426,20 +426,28 @@ def cmd_profiles():
     if profiles:
         table = create_table("Available Profiles", ["Name", "Source", "Description"])
         for profile in profiles:
-            source_display = (
-                "[cyan]user[/cyan]"
-                if profile["source"] == "user"
-                else "[dim]default[/dim]"
-            )
+            # Special handling for system profile
+            if profile["name"] == "system":
+                source_display = "[yellow]system[/yellow]"
+                name_display = f"[bold]{profile['name']}[/bold]"
+            else:
+                source_display = (
+                    "[cyan]user[/cyan]"
+                    if profile["source"] == "user"
+                    else "[dim]default[/dim]"
+                )
+                name_display = profile["name"]
+
             table.add_row(
-                profile["name"],
+                name_display,
                 source_display,
                 profile["description"][:50] + "..."
                 if len(profile["description"]) > 50
                 else profile["description"],
-                style=Colors.GREEN if profile["source"] == "user" else None,
+                style=Colors.YELLOW if profile["name"] == "system" else (Colors.GREEN if profile["source"] == "user" else None),
             )
         print_table(table)
+        console.print("\n[dim]Note: 'system' profile is automatically loaded for all queries[/dim]", style=Colors.GREY)
         console.print("\nUse: orun chat --profile <name>", style=Colors.YELLOW)
         console.print(
             "Custom profiles: ~/.orun/data/profiles/", style=Colors.GREY

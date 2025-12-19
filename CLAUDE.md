@@ -220,6 +220,60 @@ orun c <id>                # Continue conversation by ID
 orun last                  # Continue last conversation
 ```
 
+## System Profile (Automatic Language Matching)
+
+orun **automatically matches the AI's response language to your input language**. This feature is enabled by default through the `system` profile.
+
+### How It Works
+
+- Write in **Ukrainian** → AI responds in Ukrainian
+- Write in **English** → AI responds in English
+- Write in **Russian** → AI responds in Russian
+- Write in **any language** → AI responds in that language
+
+The AI will maintain the same language throughout the entire response, including explanations, code comments, error messages, and examples.
+
+### Implementation
+
+The system profile is implemented through:
+1. **Prompt Template**: `data/prompts/language_matching.md` - Contains language matching instructions
+2. **System Profile**: `data/profiles/system.json` - Automatically loaded for all queries
+
+### Customization
+
+**To disable language matching:**
+Create a custom `system` profile in `~/.orun/data/profiles/system.json`:
+```json
+{
+  "description": "Custom system profile (language matching disabled)",
+  "included_prompts": []
+}
+```
+
+**To modify language matching behavior:**
+Create a custom prompt in `~/.orun/data/prompts/language_matching.md`:
+```markdown
+Your custom language matching instructions here
+```
+
+**To extend the system profile:**
+Add additional prompts to your custom system profile:
+```json
+{
+  "description": "Extended system profile",
+  "included_prompts": ["language_matching", "my_custom_prompt"]
+}
+```
+
+User-defined profiles and prompts in `~/.orun/data/` automatically override default ones.
+
+### Technical Details
+
+- The `system` profile is **always loaded first** for all queries (chat mode and single-shot)
+- User-specified profiles (via `--profile`) are merged after the system profile
+- This ensures consistent language behavior and core AI settings across all interactions
+- The system profile has special status in `orun profiles` output (highlighted in yellow)
+
 ## Prompt and Strategy Templates
 
 orun supports pre-defined prompt and strategy templates to streamline common tasks. Templates are automatically loaded from both packaged defaults and user-custom locations.
