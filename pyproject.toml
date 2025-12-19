@@ -1,6 +1,6 @@
 [project]
 name = "orun-py"
-version = "1.4.0a4"
+version = "1.4.0"
 description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.10"
