@@ -17,6 +17,19 @@ from orun.models_config import models_config
 from orun.rich_utils import Colors, console, print_error
 
 
+def unload_model(model_name: str) -> None:
+    """
+    Unload a model from Ollama memory to free up GPU/RAM resources.
+    Uses keep_alive=0 to immediately unload the model.
+    """
+    try:
+        # Setting keep_alive to 0 tells Ollama to unload the model immediately
+        ollama.generate(model=model_name, prompt="", keep_alive=0)
+    except Exception:
+        # Silently ignore errors - model might already be unloaded
+        pass
+
+
 def run_consensus(
     pipeline_name: str,
     user_prompt: str,
@@ -246,6 +259,9 @@ def run_sequential_consensus(
 
             final_output = step_output
 
+            # Unload model to free GPU/RAM for next step
+            unload_model(model_name)
+
         except Exception as e:
             error_msg = f"Error in step {step_idx}/{total_steps} ({role} - {model_name}): {str(e)}"
             print_error(error_msg)
@@ -253,6 +269,8 @@ def run_sequential_consensus(
                 f"Pipeline: {pipeline_name}, Step {step_idx}/{total_steps}",
                 style=Colors.RED,
             )
+            # Try to unload the model even on error
+            unload_model(model_name)
             return final_output  # Return what we have so far
 
     # Pipeline completed
@@ -351,6 +369,9 @@ def run_parallel_consensus(
                 conversation_id, "assistant", f"[{model_name}]\n{model_output}"
             )
 
+            # Unload model to free GPU/RAM for next model
+            unload_model(model_name)
+
         except Exception as e:
             error_msg = f"Error with model {model_name}: {str(e)}"
             print_error(error_msg)
@@ -358,6 +379,8 @@ def run_parallel_consensus(
                 f"Pipeline: {pipeline_name}, Model {model_idx}/{total_models}",
                 style=Colors.RED,
             )
+            # Try to unload the model even on error
+            unload_model(model_name)
             # Continue with other models
 
     if not responses:
@@ -448,10 +471,15 @@ def synthesize_responses(
 
         console.print("\n✓ Consensus synthesis completed", style=Colors.GREEN)
 
+        # Unload synthesizer model to free GPU/RAM
+        unload_model(synthesizer_model)
+
         return synthesis
 
     except Exception as e:
         error_msg = f"Error during synthesis: {str(e)}"
         print_error(error_msg)
+        # Try to unload the model even on error
+        unload_model(synthesizer_model)
         # Fallback: return all responses
         return "\n\n---\n\n".join([r["content"] for r in responses])
