@@ -84,11 +84,29 @@ def ensure_function_gemma_available(auto_download: bool = True) -> bool:
         True if FunctionGemma is available, False otherwise
     """
     try:
-        models_list = ollama.list()
-        function_model_found = any(
-            "functiongemma" in model.get("name", "").lower()
-            for model in models_list.get("models", [])
-        )
+        # Handle different response types (object vs dict)
+        response = ollama.list()
+        if hasattr(response, "models"):
+            models = response.models
+        elif isinstance(response, dict):
+            models = response.get("models", [])
+        else:
+            models = []
+
+        function_model_found = False
+        for model in models:
+            # Handle model item types
+            name = ""
+            if hasattr(model, "model"):
+                name = model.model
+            elif hasattr(model, "name"):
+                name = model.name
+            elif isinstance(model, dict):
+                name = model.get("model", model.get("name", ""))
+
+            if "functiongemma" in name.lower():
+                function_model_found = True
+                break
 
         if function_model_found:
             return True
