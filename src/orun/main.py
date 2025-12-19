@@ -184,9 +184,9 @@ def main():
                 from orun import profiles_manager
                 profile = profiles_manager.get_profile(args.profile)
                 if profile:
-                    profile_prompts = profile.prompts
+                    profile_prompts = profile.included_prompts
                     profile_strategy = profile.strategy
-                    console.print(f"Using profile: {args.profile} ({len(profile.prompts)} prompts)", style=Colors.CYAN)
+                    console.print(f"Using profile: {args.profile} ({len(profile.included_prompts)} prompts)", style=Colors.CYAN)
                 else:
                     print_warning(f"Profile '{args.profile}' not found. Run 'orun profiles' to see available profiles.")
 
@@ -444,6 +444,11 @@ Commands:
         metavar="PIPELINE",
         help="Use consensus pipeline instead of single model",
     )
+    parser.add_argument(
+        "--profile",
+        dest="profile",
+        help="Use a specific profile (included prompts)",
+    )
 
     args = parser.parse_args()
 
@@ -487,7 +492,7 @@ Commands:
     if args.from_clipboard:
         clipboard_content = utils.read_clipboard_text()
 
-    # If no prompt/images/files/dir/stdin/clipboard provided, but have a prompt/strategy template, show help
+    # If no prompt/images/files/dir/stdin/clipboard provided, but have a prompt/strategy template or profile, show help
     if (
         not user_prompt
         and not image_paths
@@ -497,6 +502,7 @@ Commands:
         and not clipboard_content
         and not args.use_prompt
         and not args.use_strategy
+        and not args.profile
     ):
         parser.print_help()
         return
@@ -535,6 +541,24 @@ Commands:
         if args.to_clipboard:
             utils.copy_to_clipboard(output)
     else:
+        # Load profile if specified
+        profile_prompts = []
+        profile_strategy = None
+        if args.profile:
+            from orun import profiles_manager
+            profile = profiles_manager.get_profile(args.profile)
+            if profile:
+                profile_prompts = profile.included_prompts
+                profile_strategy = profile.strategy
+                if not args.quiet:
+                    console.print(f"Using profile: {args.profile} ({len(profile.included_prompts)} prompts)", style=Colors.CYAN)
+            else:
+                print_warning(f"Profile '{args.profile}' not found. Run 'orun profiles' to see available profiles.")
+
+        # Merge profile prompts with command-line prompts
+        merged_prompts = profile_prompts + (args.use_prompt or [])
+        merged_strategy = args.use_strategy or ([profile_strategy] if profile_strategy else None)
+
         # Regular single-shot mode
         core.run_single_shot(
             model_name,
@@ -542,8 +566,8 @@ Commands:
             image_paths,
             use_tools=True,
             yolo=args.yolo,
-            prompt_template=args.use_prompt,
-            strategy_template=args.use_strategy,
+            prompt_template=merged_prompts if merged_prompts else None,
+            strategy_template=merged_strategy if merged_strategy else None,
             file_paths=file_paths,
             stdin_content=stdin_content,
             output_file=args.output,

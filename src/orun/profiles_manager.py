@@ -50,7 +50,7 @@ class Profile:
     """A profile containing a list of prompt templates to activate."""
     name: str
     description: str
-    prompts: list[str] = field(default_factory=list)
+    included_prompts: list[str] = field(default_factory=list)
     strategy: str | None = None
     options: dict | None = None
 
@@ -65,7 +65,7 @@ def get_profile(name: str) -> Profile | None:
                 return Profile(
                     name=name,
                     description=data.get("description", ""),
-                    prompts=data.get("prompts", []),
+                    included_prompts=data.get("included_prompts", data.get("prompts", [])),
                     strategy=data.get("strategy"),
                     options=data.get("options"),
                 )
@@ -89,12 +89,12 @@ def list_profiles() -> list[dict]:
             if name not in profiles:
                 try:
                     data = json.loads(json_file.read_text(encoding="utf-8"))
-                    prompts_list = data.get("prompts", [])
+                    prompts_list = data.get("included_prompts", data.get("prompts", []))
                     profiles[name] = {
                         "name": name,
                         "description": data.get("description", "No description"),
                         "prompts_count": len(prompts_list),
-                        "prompts": prompts_list,
+                        "included_prompts": prompts_list,
                         "source": "user" if ".orun" in str(profiles_dir) else "default",
                     }
                 except Exception:
@@ -109,7 +109,7 @@ def list_profiles() -> list[dict]:
     return sorted(profiles.values(), key=lambda x: x["name"])
 
 
-def create_profile(name: str, prompts: list[str], description: str = "", strategy: str | None = None) -> bool:
+def create_profile(name: str, included_prompts: list[str], description: str = "", strategy: str | None = None) -> bool:
     """Create a new profile in user directory."""
     user_profiles_dir = Path.home() / ".orun" / "data" / "profiles"
     user_profiles_dir.mkdir(parents=True, exist_ok=True)
@@ -119,7 +119,7 @@ def create_profile(name: str, prompts: list[str], description: str = "", strateg
     try:
         data = {
             "description": description or f"Custom profile: {name}",
-            "prompts": prompts,
+            "included_prompts": included_prompts,
         }
         if strategy:
             data["strategy"] = strategy
