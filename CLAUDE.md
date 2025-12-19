@@ -92,7 +92,7 @@ git push
 
 ### Version Bumping Logic
 
-- **Custom rule**: `X.Y.9` -> `X.(Y+1).0` (patch 9 rolls to next minor)
+- **Patch**: Increments patch number (e.g., `1.2.3` -> `1.2.4`, `1.2.14` -> `1.2.15`)
 - **Alpha/Beta/RC**: Increments pre-release number if already in that phase
 - **Finalize**: Removes pre-release suffix (e.g., `1.2.3a1` -> `1.2.3`)
 

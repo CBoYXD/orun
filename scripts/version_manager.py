@@ -69,11 +69,7 @@ class Version:
 
     def bump_patch(self):
         """Bump patch version: 1.2.3 -> 1.2.4"""
-        new_patch = self.patch + 1
-        # Custom rule: X.Y.9 -> X.(Y+1).0
-        if new_patch == 10:
-            return Version(f"{self.major}.{self.minor + 1}.0")
-        return Version(f"{self.major}.{self.minor}.{new_patch}")
+        return Version(f"{self.major}.{self.minor}.{self.patch + 1}")
 
     def bump_alpha(self):
         """Bump to next alpha: 1.2.3 -> 1.2.4a1 or 1.2.3a1 -> 1.2.3a2"""
