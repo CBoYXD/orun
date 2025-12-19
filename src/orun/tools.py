@@ -654,7 +654,10 @@ def git_commit(message: str, add_all: bool = False) -> str:
         )
         if result.returncode != 0:
             stderr = result.stderr.strip()
-            if "nothing to commit" in stderr.lower() or "nothing to commit" in result.stdout.lower():
+            if (
+                "nothing to commit" in stderr.lower()
+                or "nothing to commit" in result.stdout.lower()
+            ):
                 return "Nothing to commit, working tree clean."
             return f"Git commit error: {stderr}"
 
@@ -723,11 +726,29 @@ def call_function_model(task_description: str, context: str = "") -> str:
     """
     # Check if FunctionGemma is available
     try:
-        models_list = ollama.list()
-        function_model_available = any(
-            "functiongemma" in model.get("name", "").lower()
-            for model in models_list.get("models", [])
-        )
+        # Handle different response types (object vs dict)
+        response = ollama.list()
+        if hasattr(response, "models"):
+            models = response.models
+        elif isinstance(response, dict):
+            models = response.get("models", [])
+        else:
+            models = []
+
+        function_model_available = False
+        for model in models:
+            # Handle model item types
+            name = ""
+            if hasattr(model, "model"):
+                name = model.model
+            elif hasattr(model, "name"):
+                name = model.name
+            elif isinstance(model, dict):
+                name = model.get("model", model.get("name", ""))
+
+            if "functiongemma" in name.lower():
+                function_model_available = True
+                break
 
         if not function_model_available:
             return (
@@ -1067,12 +1088,21 @@ def get_tools_for_model(model_name: str) -> list:
     Returns:
         List of tool definitions appropriate for this model
     """
-    is_function_gemma = "functiongemma" in model_name.lower() or "function-gemma" in model_name.lower()
+    is_function_gemma = (
+        "functiongemma" in model_name.lower() or "function-gemma" in model_name.lower()
+    )
 
     if is_function_gemma:
         # FunctionGemma gets all tools EXCEPT call_function_model
-        return [tool for tool in TOOL_DEFINITIONS if tool["function"]["name"] != "call_function_model"]
+        return [
+            tool
+            for tool in TOOL_DEFINITIONS
+            if tool["function"]["name"] != "call_function_model"
+        ]
     else:
         # Regular models only get call_function_model
-        return [tool for tool in TOOL_DEFINITIONS if tool["function"]["name"] == "call_function_model"]
-
+        return [
+            tool
+            for tool in TOOL_DEFINITIONS
+            if tool["function"]["name"] == "call_function_model"
+        ]
