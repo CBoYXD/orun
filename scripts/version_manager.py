@@ -61,56 +61,107 @@ class Version:
 
     def bump_major(self):
         """Bump major version: 1.2.3 -> 2.0.0"""
-        return Version(f"{self.major + 1}.0.0")
+        v = Version(f"{self.major + 1}.0.0")
+        v.pre_type = None
+        v.pre_number = None
+        v.post = None
+        return v
 
     def bump_minor(self):
         """Bump minor version: 1.2.3 -> 1.3.0"""
-        return Version(f"{self.major}.{self.minor + 1}.0")
+        v = Version(f"{self.major}.{self.minor + 1}.0")
+        v.pre_type = None
+        v.pre_number = None
+        v.post = None
+        return v
 
     def bump_patch(self):
         """Bump patch version: 1.2.3 -> 1.2.4"""
-        return Version(f"{self.major}.{self.minor}.{self.patch + 1}")
+        v = Version(f"{self.major}.{self.minor}.{self.patch + 1}")
+        v.pre_type = None
+        v.pre_number = None
+        v.post = None
+        return v
+
+    def bump_with_stage(self, part, stage):
+        """Bump version part and apply stage."""
+        # 1. Determine base version based on part
+        if part == 'major':
+            base = self.bump_major()
+        elif part == 'minor':
+            base = self.bump_minor()
+        elif part == 'patch':
+            base = self.bump_patch()
+        elif part == 'current':
+            base = Version(str(self))
+        else:
+            raise ValueError(f"Unknown part: {part}")
+
+        # 2. Apply stage
+        if not stage or stage in ['stable', 'release']:
+            # Strip pre/post if explicitly stable or just base bump
+            if stage:
+                base.pre_type = None
+                base.pre_number = None
+                base.post = None
+            return base
+
+        if stage in ['alpha', 'a', 'beta', 'b', 'rc']:
+            # Normalize type
+            t = 'a' if stage in ['alpha', 'a'] else 'b' if stage in ['beta', 'b'] else 'rc'
+            
+            # If numbers match original and type matches, increment
+            numbers_match = (base.major == self.major and 
+                             base.minor == self.minor and 
+                             base.patch == self.patch)
+            
+            if numbers_match and self.pre_type == t:
+                base.pre_type = t
+                base.pre_number = self.pre_number + 1
+            else:
+                base.pre_type = t
+                base.pre_number = 1
+            base.post = None
+            return base
+            
+        if stage == 'post':
+            numbers_match = (base.major == self.major and 
+                             base.minor == self.minor and 
+                             base.patch == self.patch)
+            
+            if numbers_match and self.post is not None:
+                base.post = self.post + 1
+            else:
+                base.post = 1
+            return base
+
+        return base
 
     def bump_alpha(self):
-        """Bump to next alpha: 1.2.3 -> 1.2.4a1 or 1.2.3a1 -> 1.2.3a2"""
+        """Legacy bump alpha."""
         if self.pre_type == 'a':
-            # Already alpha, increment alpha number
-            return Version(f"{self.major}.{self.minor}.{self.patch}a{self.pre_number + 1}")
-        else:
-            # New alpha for next patch
-            next_patch = self.bump_patch()
-            return Version(f"{next_patch.major}.{next_patch.minor}.{next_patch.patch}a1")
+            return self.bump_with_stage('current', 'alpha')
+        return self.bump_with_stage('patch', 'alpha')
 
     def bump_beta(self):
-        """Bump to next beta: 1.2.3 -> 1.2.4b1 or 1.2.3b1 -> 1.2.3b2"""
+        """Legacy bump beta."""
         if self.pre_type == 'b':
-            # Already beta, increment beta number
-            return Version(f"{self.major}.{self.minor}.{self.patch}b{self.pre_number + 1}")
-        else:
-            # New beta for next patch
-            next_patch = self.bump_patch()
-            return Version(f"{next_patch.major}.{next_patch.minor}.{next_patch.patch}b1")
+            return self.bump_with_stage('current', 'beta')
+        return self.bump_with_stage('patch', 'beta')
 
     def bump_rc(self):
-        """Bump to next rc: 1.2.3 -> 1.2.4rc1 or 1.2.3rc1 -> 1.2.3rc2"""
+        """Legacy bump rc."""
         if self.pre_type == 'rc':
-            # Already rc, increment rc number
-            return Version(f"{self.major}.{self.minor}.{self.patch}rc{self.pre_number + 1}")
-        else:
-            # New rc for next patch
-            next_patch = self.bump_patch()
-            return Version(f"{next_patch.major}.{next_patch.minor}.{next_patch.patch}rc1")
+            return self.bump_with_stage('current', 'rc')
+        return self.bump_with_stage('patch', 'rc')
 
     def bump_post(self):
-        """Bump to next post release: 1.2.3 -> 1.2.3.post1"""
-        if self.post is not None:
-            return Version(f"{self.major}.{self.minor}.{self.patch}.post{self.post + 1}")
-        else:
-            return Version(f"{self.major}.{self.minor}.{self.patch}.post1")
+        """Legacy bump post."""
+        return self.bump_with_stage('current', 'post')
 
     def finalize(self):
-        """Finalize pre-release: 1.2.3a1 -> 1.2.3"""
-        return Version(f"{self.major}.{self.minor}.{self.patch}")
+        """Finalize pre-release."""
+        return self.bump_with_stage('current', 'stable')
 
     def __str__(self):
         base = f"{self.major}.{self.minor}.{self.patch}"
@@ -156,8 +207,9 @@ def main():
         print(__doc__)
         sys.exit(1)
 
-    command = sys.argv[1].lower()
-
+    args = sys.argv[1:]
+    command = args[0].lower()
+    
     # Read current version
     pyproject_path = Path("pyproject.toml")
     if not pyproject_path.exists():
@@ -180,29 +232,34 @@ def main():
 
     # Determine new version based on command
     if command == "set":
-        if len(sys.argv) < 3:
+        if len(args) < 2:
             print("Error: 'set' requires a version argument", file=sys.stderr)
             sys.exit(1)
         try:
-            new_version = Version(sys.argv[2])
+            new_version = Version(args[1])
         except ValueError as e:
             print(f"Error: Invalid version format: {e}", file=sys.stderr)
             sys.exit(1)
-    elif command == "major":
-        new_version = current_version.bump_major()
-    elif command == "minor":
-        new_version = current_version.bump_minor()
-    elif command == "patch":
-        new_version = current_version.bump_patch()
-    elif command == "alpha" or command == "a":
+    
+    # Check for <part> <stage> format (e.g. "minor alpha", "patch stable")
+    elif command in ['major', 'minor', 'patch', 'current']:
+        stage = args[1].lower() if len(args) > 1 else None
+        # If no stage provided for major/minor/patch, default to stable bump (standard behavior)
+        if not stage and command != 'current':
+            stage = 'stable'
+        
+        new_version = current_version.bump_with_stage(command, stage)
+
+    # Legacy/Shortcut commands
+    elif command in ["alpha", "a"]:
         new_version = current_version.bump_alpha()
-    elif command == "beta" or command == "b":
+    elif command in ["beta", "b"]:
         new_version = current_version.bump_beta()
-    elif command == "rc":
+    elif command in ["rc"]:
         new_version = current_version.bump_rc()
-    elif command == "post":
+    elif command in ["post"]:
         new_version = current_version.bump_post()
-    elif command == "release" or command == "finalize":
+    elif command in ["release", "finalize"]:
         new_version = current_version.finalize()
     else:
         print(f"Error: Unknown command '{command}'", file=sys.stderr)
