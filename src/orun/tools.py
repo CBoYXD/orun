@@ -5,6 +5,7 @@ import urllib.request
 from html.parser import HTMLParser
 
 import arxiv
+import ollama
 from ddgs import DDGS
 from langdetect import LangDetectException, detect
 
@@ -720,9 +721,6 @@ def call_function_model(task_description: str, context: str = "") -> str:
 
     The FunctionGemma model will analyze your request and call the appropriate tools.
     """
-    import ollama
-    from orun.rich_utils import console, Colors
-
     # Check if FunctionGemma is available
     try:
         models_list = ollama.list()

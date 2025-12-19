@@ -2,7 +2,7 @@ import argparse
 import os
 import sys
 
-from orun import commands, consensus, core, db, utils
+from orun import commands, consensus, core, db, profiles_manager, utils
 from orun.models_config import models_config
 from orun.rich_utils import Colors, console, print_warning
 from orun.tui import OrunApp
@@ -178,8 +178,6 @@ def main():
             image_paths = utils.get_image_paths(args.images)
 
             # Load profile if specified
-            from orun import profiles_manager
-
             # Always load system profile (can be overridden by user)
             system_profile = profiles_manager.get_profile("system")
             profile_prompts = system_profile.included_prompts if system_profile else []
@@ -550,8 +548,6 @@ Commands:
             utils.copy_to_clipboard(output)
     else:
         # Load profile if specified
-        from orun import profiles_manager
-
         # Always load system profile (can be overridden by user)
         system_profile = profiles_manager.get_profile("system")
         profile_prompts = system_profile.included_prompts if system_profile else []

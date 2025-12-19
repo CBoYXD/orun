@@ -1,3 +1,8 @@
+import json
+import platform
+import subprocess
+from pathlib import Path
+
 from orun import core, db, profiles_manager, prompts_manager, tools
 from orun.consensus_config import consensus_config
 from orun.models_config import models_config
@@ -294,9 +299,6 @@ def cmd_consensus_list():
 
 def cmd_consensus_config():
     """Show consensus configuration path and info."""
-    import platform
-    import subprocess
-
     config_path = consensus_config.config_path
 
     console.print("\n[cyan]Consensus Configuration:[/cyan]")
@@ -306,8 +308,6 @@ def cmd_consensus_config():
         console.print("  Status: [green]Found[/green]")
 
         # Count user-defined pipelines
-        import json
-
         try:
             with open(config_path, "r", encoding="utf-8") as f:
                 config = json.load(f)
@@ -356,9 +356,6 @@ def cmd_consensus_config():
 
 def cmd_export(conversation_id: int, output: str | None = None, format: str = "json"):
     """Export a conversation to a file."""
-    import json as json_module
-    from pathlib import Path
-
     # Get conversation info for filename
     conv = db.get_conversation(conversation_id)
     if not conv:
@@ -390,9 +387,6 @@ def cmd_export(conversation_id: int, output: str | None = None, format: str = "j
 
 def cmd_import(file_path: str):
     """Import a conversation from a JSON file."""
-    import json as json_module
-    from pathlib import Path
-
     path = Path(file_path)
     if not path.exists():
         print_error(f"File not found: {file_path}")
@@ -400,8 +394,8 @@ def cmd_import(file_path: str):
 
     try:
         content = path.read_text(encoding="utf-8")
-        data = json_module.loads(content)
-    except json_module.JSONDecodeError as e:
+        data = json.loads(content)
+    except json.JSONDecodeError as e:
         print_error(f"Invalid JSON: {e}")
         return
     except Exception as e:
