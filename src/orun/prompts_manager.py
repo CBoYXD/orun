@@ -1,5 +1,4 @@
 import json
-import os
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -10,10 +9,8 @@ def _candidate_data_dirs() -> list[Path]:
     """Return possible locations for packaged or local prompt data."""
     candidates: list[Path] = []
 
-    # User override
-    env_dir = os.environ.get("ORUN_DATA_DIR")
-    if env_dir:
-        candidates.append(Path(env_dir))
+    # User custom data (~/.orun/data/)
+    candidates.append(Path.home() / ".orun" / "data")
 
     # Packaged data (when distributed via wheel)
     candidates.append(Path(__file__).resolve().parent / "data")
@@ -27,18 +24,27 @@ def _candidate_data_dirs() -> list[Path]:
     return candidates
 
 
-def _resolve_data_dir(kind: str) -> Path:
-    """Find the first existing directory for the given kind (prompts/strategies)."""
+def _resolve_data_dirs(kind: str) -> list[Path]:
+    """Find all existing directories for the given kind (prompts/strategies).
+    Returns list of paths in priority order (user first, then defaults)."""
+    dirs = []
     for base in _candidate_data_dirs():
         candidate = base / kind
         if candidate.exists():
-            return candidate
-    # Default to repo-style path even if missing so callers can still build paths
-    return Path("data") / kind
+            dirs.append(candidate)
+    # Always include at least one path (for error messages, etc)
+    if not dirs:
+        dirs.append(Path("data") / kind)
+    return dirs
 
 
-PROMPTS_DIR = _resolve_data_dir("prompts")
-STRATEGIES_DIR = _resolve_data_dir("strategies")
+# Get all possible directories (user custom will be first if it exists)
+PROMPTS_DIRS = _resolve_data_dirs("prompts")
+STRATEGIES_DIRS = _resolve_data_dirs("strategies")
+
+# Primary directories for backward compatibility
+PROMPTS_DIR = PROMPTS_DIRS[0]
+STRATEGIES_DIR = STRATEGIES_DIRS[0]
 ROLES_DIR = PROMPTS_DIR / "roles"
 
 
@@ -53,87 +59,94 @@ class PromptBuild:
 
 
 def get_prompt(name: str) -> str:
-    """Loads a prompt from the prompts directory, checking roles subdir if applicable."""
-    # Try exact match in main prompts dir
-    path = PROMPTS_DIR / name
-    if not path.exists() and not name.endswith(".md"):
-        path = PROMPTS_DIR / f"{name}.md"
-
-    # If not found, try in roles subdir
-    if not path.exists():
-        path = ROLES_DIR / name
+    """Loads a prompt from the prompts directories (user custom first, then defaults)."""
+    # Try all prompts directories in order
+    for prompts_dir in PROMPTS_DIRS:
+        # Try exact match in main prompts dir
+        path = prompts_dir / name
         if not path.exists() and not name.endswith(".md"):
-            path = ROLES_DIR / f"{name}.md"
+            path = prompts_dir / f"{name}.md"
 
-    if path.exists():
-        try:
-            return path.read_text(encoding="utf-8").strip()
-        except Exception as e:
-            print_error(f"Failed to load prompt '{name}': {e}")
-            return ""
+        # If not found, try in roles subdir
+        if not path.exists():
+            roles_dir = prompts_dir / "roles"
+            path = roles_dir / name
+            if not path.exists() and not name.endswith(".md"):
+                path = roles_dir / f"{name}.md"
+
+        if path.exists():
+            try:
+                return path.read_text(encoding="utf-8").strip()
+            except Exception as e:
+                print_error(f"Failed to load prompt '{name}': {e}")
+                return ""
 
     return ""
 
 
 def get_strategy(name: str) -> str:
-    """Loads a strategy from the strategies directory."""
-    path = STRATEGIES_DIR / name
+    """Loads a strategy from the strategies directories (user custom first, then defaults)."""
+    # Try all strategies directories in order
+    for strategies_dir in STRATEGIES_DIRS:
+        path = strategies_dir / name
 
-    # Try .md first
-    if not path.exists() and not name.endswith((".md", ".json")):
-        path = STRATEGIES_DIR / f"{name}.md"
+        # Try .md first
+        if not path.exists() and not name.endswith((".md", ".json")):
+            path = strategies_dir / f"{name}.md"
 
-    # If not .md, try .json
-    if not path.exists():
-        path = STRATEGIES_DIR / f"{name}.json"
+        # If not .md, try .json
+        if not path.exists():
+            path = strategies_dir / f"{name}.json"
 
-    if path.exists():
-        try:
-            content = path.read_text(encoding="utf-8").strip()
-            # If it's JSON, try to extract the relevant text
-            if path.suffix == ".json":
-                try:
-                    data = json.loads(content)
-                    # Handle different JSON structures
-                    if "prompt" in data:
-                        return data["prompt"]
-                    elif "description" in data:
-                        return data["description"]
-                    elif "strategy" in data:
-                        return data["strategy"]
-                    elif isinstance(data, str):
-                        return data
-                    else:
-                        # Return a description of the strategy
-                        return f"Strategy: {name}\n\n{json.dumps(data, indent=2)}"
-                except json.JSONDecodeError:
-                    return content
-            return content
-        except Exception as e:
-            print_error(f"Failed to load strategy '{name}': {e}")
-            return ""
+        if path.exists():
+            try:
+                content = path.read_text(encoding="utf-8").strip()
+                # If it's JSON, try to extract the relevant text
+                if path.suffix == ".json":
+                    try:
+                        data = json.loads(content)
+                        # Handle different JSON structures
+                        if "prompt" in data:
+                            return data["prompt"]
+                        elif "description" in data:
+                            return data["description"]
+                        elif "strategy" in data:
+                            return data["strategy"]
+                        elif isinstance(data, str):
+                            return data
+                        else:
+                            # Return a description of the strategy
+                            return f"Strategy: {name}\n\n{json.dumps(data, indent=2)}"
+                    except json.JSONDecodeError:
+                        return content
+                return content
+            except Exception as e:
+                print_error(f"Failed to load strategy '{name}': {e}")
+                return ""
 
     return ""
 
 
 def list_prompts() -> list[str]:
-    """Lists available prompt files, including those in roles subdirectory."""
-    prompts = []
-    if PROMPTS_DIR.exists():
-        prompts.extend([p.stem for p in PROMPTS_DIR.glob("*.md")])
-    if ROLES_DIR.exists():
-        prompts.extend([f"role/{p.stem}" for p in ROLES_DIR.glob("*.md")])
+    """Lists available prompt files from all directories (user custom + defaults)."""
+    prompts = set()
+    for prompts_dir in PROMPTS_DIRS:
+        if prompts_dir.exists():
+            prompts.update([p.stem for p in prompts_dir.glob("*.md")])
+        roles_dir = prompts_dir / "roles"
+        if roles_dir.exists():
+            prompts.update([f"role/{p.stem}" for p in roles_dir.glob("*.md")])
     return sorted(prompts)
 
 
 def list_strategies() -> list[str]:
-    """Lists available strategy files (both .md and .json)."""
-    strategies = []
-    if STRATEGIES_DIR.exists():
-        strategies.extend([p.stem for p in STRATEGIES_DIR.glob("*.md")])
-        strategies.extend([p.stem for p in STRATEGIES_DIR.glob("*.json")])
-    # Remove duplicates while preserving order
-    return sorted(list(set(strategies)))
+    """Lists available strategy files from all directories (user custom + defaults)."""
+    strategies = set()
+    for strategies_dir in STRATEGIES_DIRS:
+        if strategies_dir.exists():
+            strategies.update([p.stem for p in strategies_dir.glob("*.md")])
+            strategies.update([p.stem for p in strategies_dir.glob("*.json")])
+    return sorted(strategies)
 
 
 def compose_prompt(

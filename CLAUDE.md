@@ -87,17 +87,27 @@ orun last                  # Continue last conversation
 
 ## Prompt and Strategy Templates
 
-orun supports pre-defined prompt and strategy templates to streamline common tasks:
+orun supports pre-defined prompt and strategy templates to streamline common tasks. Templates are automatically loaded from both packaged defaults and user-custom locations.
 
 ### Prompt Templates
-Prompt templates are stored in `data/prompts/*.md` and provide ready-to-use prompts for specific tasks:
+**Default prompts** are included with the package and provide ready-to-use prompts for specific tasks:
 - **Code-related**: `review_code`, `create_coding_project`, `explain_code`
 - **Analysis**: `analyze_paper`, `analyze_bill`, `analyze_claims`
 - **Writing**: `write_essay`, `create_summary`, `improve_writing`
 - **And 200+ more templates for various tasks**
 
+**Custom prompts** can be added to `~/.orun/data/prompts/` as `.md` files. Each file should contain the prompt text. The filename (without `.md`) becomes the prompt name.
+
+Example: Create `~/.orun/data/prompts/my_prompt.md`:
+```markdown
+You are an expert reviewer. Analyze the following and provide detailed feedback on:
+1. Strengths
+2. Weaknesses
+3. Recommendations
+```
+
 ### Strategy Templates
-Strategy templates define reasoning approaches and are stored in `data/strategies/`:
+**Default strategies** define reasoning approaches:
 - **cot**: Chain-of-Thought - Think step by step
 - **tot**: Tree-of-Thoughts - Explore multiple reasoning paths
 - **reflexion**: Reflect on and improve responses
@@ -106,17 +116,26 @@ Strategy templates define reasoning approaches and are stored in `data/strategie
 - **self-refine**: Iterative self-improvement
 - **standard**: Standard direct response
 
+**Custom strategies** can be added to `~/.orun/data/strategies/` as `.json` or `.md` files.
+
+Example: Create `~/.orun/data/strategies/my_strategy.json`:
+```json
+{
+  "prompt": "Think deeply about this problem. First, identify the core issue. Then, brainstorm solutions. Finally, evaluate each solution."
+}
+```
+
 ### Using Templates in Chat Mode
 In interactive chat, you can apply templates on-the-fly:
 ```bash
-/prompt analyze_paper     # Apply a prompt template
-/strategy cot            # Apply a strategy template
+/prompt analyze_paper     # Apply a prompt template (default or custom)
+/strategy cot            # Apply a strategy template (default or custom)
 ```
 
 ### Listing Available Templates
 ```bash
-orun prompts              # List all prompt templates
-orun strategies           # List all strategy templates
+orun prompts              # List all prompt templates (default + custom)
+orun strategies           # List all strategy templates (default + custom)
 ```
 
 ## Consensus Systems
@@ -186,59 +205,57 @@ Note: Full consensus integration in interactive chat mode is planned for a futur
 
 ### Creating Custom Consensus Pipelines
 
-Add custom pipelines in `~/.orun/config.json`. **User-defined pipelines automatically override defaults with the same name**:
+Custom consensus pipelines are stored as individual JSON files in `~/.orun/data/consensus/`. Each file represents one pipeline.
+
+**Creating a custom pipeline:**
+
+1. Create a JSON file in `~/.orun/data/consensus/` with the pipeline name (e.g., `my_pipeline.json`)
+2. Add the pipeline configuration following the structure below
+3. The pipeline will be automatically loaded next time you run orun
+
+**Example: `~/.orun/data/consensus/my_pipeline.json`**
 
 ```json
 {
-  "consensus": {
-    "pipelines": {
-      "my_pipeline": {
-        "description": "Custom workflow",
-        "type": "sequential",
-        "models": [
-          {
-            "name": "qwen2.5-coder:latest",
-            "role": "analyzer",
-            "system_prompt": "Analyze the code and identify issues",
-            "options": {"temperature": 0.3}
-          },
-          {
-            "name": "llama3.2:latest",
-            "role": "fixer",
-            "system_prompt": "Fix the identified issues",
-            "options": {"temperature": 0.5}
-          }
-        ],
-        "pass_strategy": "accumulate"
-      }
+  "description": "Custom workflow",
+  "type": "sequential",
+  "models": [
+    {
+      "name": "qwen2.5-coder:latest",
+      "role": "analyzer",
+      "system_prompt": "Analyze the code and identify issues",
+      "options": {"temperature": 0.3}
+    },
+    {
+      "name": "llama3.2:latest",
+      "role": "fixer",
+      "system_prompt": "Fix the identified issues",
+      "options": {"temperature": 0.5}
     }
-  }
+  ],
+  "pass_strategy": "accumulate"
 }
 ```
 
 ### Overriding Default Pipelines
 
-You can override any default pipeline by creating a user-defined pipeline with the same name in `~/.orun/config.json`. For example, to customize the `code_review` pipeline:
+You can override any default pipeline by creating a file with the same name in `~/.orun/data/consensus/`. For example, to customize the `code_review` pipeline, create `~/.orun/data/consensus/code_review.json`:
 
 ```json
 {
-  "consensus": {
-    "pipelines": {
-      "code_review": {
-        "description": "My custom code review workflow",
-        "type": "sequential",
-        "models": [
-          {"name": "my-model:latest", "role": "coder"},
-          {"name": "another-model:latest", "role": "reviewer"}
-        ],
-        "pass_strategy": "accumulate"
-      }
-    }
-  }
+  "description": "My custom code review workflow",
+  "type": "sequential",
+  "models": [
+    {"name": "my-model:latest", "role": "coder"},
+    {"name": "another-model:latest", "role": "reviewer"}
+  ],
+  "pass_strategy": "accumulate"
 }
 ```
 
-Your custom `code_review` will be used instead of the default one. The `orun consensus` command shows which pipelines are user-defined vs default.
+Your custom `code_review.json` will be used instead of the default one. The `orun consensus` command shows which pipelines are user-defined vs default.
+
+**Note:** Legacy config.json format is still supported for backward compatibility, but using separate JSON files in `~/.orun/data/consensus/` is recommended.
 
 ### Configuration Options
 

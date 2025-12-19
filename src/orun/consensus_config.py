@@ -5,60 +5,64 @@ from typing import Dict, List, Optional
 from orun.rich_utils import Colors, console
 
 
+def _candidate_data_dirs() -> list[Path]:
+    """Return possible locations for packaged or local consensus data."""
+    candidates: list[Path] = []
+
+    # Packaged data (when distributed via wheel)
+    candidates.append(Path(__file__).resolve().parent / "data")
+
+    # Repo-root data (local dev layout: repo/data next to src/)
+    candidates.append(Path(__file__).resolve().parents[2] / "data")
+
+    # Current working directory (fallback)
+    candidates.append(Path.cwd() / "data")
+
+    return candidates
+
+
+def _resolve_consensus_dir() -> Path:
+    """Find the first existing directory for consensus data."""
+    for base in _candidate_data_dirs():
+        candidate = base / "consensus"
+        if candidate.exists():
+            return candidate
+    # Default to repo-style path even if missing
+    return Path("data") / "consensus"
+
+
 class ConsensusConfig:
     def __init__(self):
         self.config_dir = Path.home() / ".orun"
         self.config_path = self.config_dir / "config.json"
-        self.data_dir = Path(__file__).parent.parent.parent / "data" / "consensus"
+        self.user_consensus_dir = self.config_dir / "data" / "consensus"
+        self.default_consensus_dir = _resolve_consensus_dir()
         self.pipelines: Dict[str, dict] = {}
-        self.pipeline_sources: Dict[str, str] = {}  # Track source: 'user' or 'default'
+        self.pipeline_sources: Dict[str, str] = {}  # Track source: 'user', 'default', or 'config'
 
-        # Create .orun directory if it doesn't exist
+        # Create user consensus directory if it doesn't exist
         self.config_dir.mkdir(parents=True, exist_ok=True)
+        self.user_consensus_dir.mkdir(parents=True, exist_ok=True)
 
-        # Load configurations (order matters: user first, then defaults)
-        self.load_config()
+        # Load configurations (order matters: default first, then user, then config.json)
         self.load_default_pipelines()
-
-    def load_config(self):
-        """Load consensus pipelines from user config."""
-        try:
-            if self.config_path.exists():
-                with open(self.config_path, "r", encoding="utf-8") as f:
-                    config = json.load(f)
-                    consensus_config = config.get("consensus", {})
-                    user_pipelines = consensus_config.get("pipelines", {})
-
-                    # Load user-defined pipelines
-                    for name, pipeline in user_pipelines.items():
-                        self.pipelines[name] = pipeline
-                        self.pipeline_sources[name] = "user"
-            else:
-                # Create default config with consensus section
-                self.create_default_config()
-        except Exception as e:
-            console.print(
-                f"Warning: Could not load consensus config: {e}", style=Colors.YELLOW
-            )
+        self.load_user_pipelines()
+        self.load_config_pipelines()
 
     def load_default_pipelines(self):
-        """Load default consensus pipelines from data/consensus/*.json"""
+        """Load default consensus pipelines from packaged/repo data/consensus/*.json"""
         try:
-            if not self.data_dir.exists():
-                # data/consensus/ doesn't exist yet, skip
+            if not self.default_consensus_dir.exists():
                 return
 
-            # Load all JSON files from data/consensus/
-            for json_file in self.data_dir.glob("*.json"):
+            # Load all JSON files from default consensus directory
+            for json_file in self.default_consensus_dir.glob("*.json"):
                 try:
                     with open(json_file, "r", encoding="utf-8") as f:
                         pipeline = json.load(f)
                         pipeline_name = json_file.stem  # filename without .json
-
-                        # Don't overwrite user-defined pipelines
-                        if pipeline_name not in self.pipelines:
-                            self.pipelines[pipeline_name] = pipeline
-                            self.pipeline_sources[pipeline_name] = "default"
+                        self.pipelines[pipeline_name] = pipeline
+                        self.pipeline_sources[pipeline_name] = "default"
                 except Exception as e:
                     console.print(
                         f"Warning: Could not load {json_file.name}: {e}",
@@ -69,25 +73,49 @@ class ConsensusConfig:
                 f"Warning: Could not load default pipelines: {e}", style=Colors.YELLOW
             )
 
-    def create_default_config(self):
-        """Add consensus section to config if it doesn't exist."""
+    def load_user_pipelines(self):
+        """Load user custom consensus pipelines from ~/.orun/data/consensus/*.json"""
         try:
-            config = {}
+            if not self.user_consensus_dir.exists():
+                return
+
+            # Load all JSON files from user consensus directory
+            for json_file in self.user_consensus_dir.glob("*.json"):
+                try:
+                    with open(json_file, "r", encoding="utf-8") as f:
+                        pipeline = json.load(f)
+                        pipeline_name = json_file.stem  # filename without .json
+                        # User pipelines override default ones
+                        self.pipelines[pipeline_name] = pipeline
+                        self.pipeline_sources[pipeline_name] = "user"
+                except Exception as e:
+                    console.print(
+                        f"Warning: Could not load {json_file.name}: {e}",
+                        style=Colors.YELLOW,
+                    )
+        except Exception as e:
+            console.print(
+                f"Warning: Could not load user pipelines: {e}", style=Colors.YELLOW
+            )
+
+    def load_config_pipelines(self):
+        """Load consensus pipelines from config.json (legacy support)."""
+        try:
             if self.config_path.exists():
                 with open(self.config_path, "r", encoding="utf-8") as f:
                     config = json.load(f)
+                    consensus_config = config.get("consensus", {})
+                    config_pipelines = consensus_config.get("pipelines", {})
 
-            # Add consensus section if not present
-            if "consensus" not in config:
-                config["consensus"] = {
-                    "pipelines": {},
-                    "_comment": "Custom consensus pipelines. Default pipelines are loaded from data/consensus/",
-                }
-
-                with open(self.config_path, "w", encoding="utf-8") as f:
-                    json.dump(config, f, indent=2)
+                    # Load config-defined pipelines (override user and default)
+                    for name, pipeline in config_pipelines.items():
+                        self.pipelines[name] = pipeline
+                        self.pipeline_sources[name] = "config"
         except Exception as e:
-            console.print(f"Error creating consensus config: {e}", style=Colors.RED)
+            console.print(
+                f"Warning: Could not load config pipelines: {e}", style=Colors.YELLOW
+            )
+
 
     def get_pipeline(self, name: str) -> Optional[dict]:
         """Get a consensus pipeline by name."""
@@ -163,25 +191,23 @@ class ConsensusConfig:
         return True, ""
 
     def save_pipeline(self, name: str, pipeline: dict) -> bool:
-        """Save a custom pipeline to user config."""
+        """Save a custom pipeline to ~/.orun/data/consensus/{name}.json"""
         try:
-            config = {}
-            if self.config_path.exists():
-                with open(self.config_path, "r", encoding="utf-8") as f:
-                    config = json.load(f)
+            # Ensure user consensus directory exists
+            self.user_consensus_dir.mkdir(parents=True, exist_ok=True)
 
-            if "consensus" not in config:
-                config["consensus"] = {"pipelines": {}}
-
-            config["consensus"]["pipelines"][name] = pipeline
-
-            with open(self.config_path, "w", encoding="utf-8") as f:
-                json.dump(config, f, indent=2)
+            # Save pipeline to individual JSON file
+            pipeline_path = self.user_consensus_dir / f"{name}.json"
+            with open(pipeline_path, "w", encoding="utf-8") as f:
+                json.dump(pipeline, f, indent=2)
 
             # Update in-memory pipelines
             self.pipelines[name] = pipeline
             self.pipeline_sources[name] = "user"
 
+            console.print(
+                f"Pipeline '{name}' saved to {pipeline_path}", style=Colors.GREEN
+            )
             return True
         except Exception as e:
             console.print(f"Error saving pipeline '{name}': {e}", style=Colors.RED)
