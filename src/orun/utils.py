@@ -420,6 +420,117 @@ def write_clipboard_text(text: str) -> bool:
         return False
 
 
+def scan_project_context(path: str = ".", max_files: int = 30) -> str:
+    """
+    Scan a project directory and build a context summary.
+    Includes: README, structure, key config files.
+    """
+    try:
+        project_path = Path(path).resolve()
+        if not project_path.exists():
+            return f"Error: Path '{path}' does not exist"
+
+        context_parts = []
+
+        # Project name
+        context_parts.append(f"# Project: {project_path.name}")
+        context_parts.append(f"Path: {project_path}\n")
+
+        # Check for README
+        readme_files = ["README.md", "README.rst", "README.txt", "README"]
+        for readme in readme_files:
+            readme_path = project_path / readme
+            if readme_path.exists():
+                try:
+                    content = readme_path.read_text(encoding="utf-8", errors="ignore")
+                    if len(content) > 5000:
+                        content = content[:5000] + "\n... (truncated)"
+                    context_parts.append(f"## README\n\n{content}\n")
+                    break
+                except Exception:
+                    pass
+
+        # Check for key config files
+        config_files = [
+            "pyproject.toml", "package.json", "Cargo.toml", "go.mod",
+            "requirements.txt", "setup.py", "Makefile", "justfile",
+            ".env.example", "docker-compose.yml", "Dockerfile"
+        ]
+        found_configs = []
+        for config in config_files:
+            config_path = project_path / config
+            if config_path.exists():
+                found_configs.append(config)
+
+        if found_configs:
+            context_parts.append(f"## Config Files Found\n{', '.join(found_configs)}\n")
+
+        # Directory structure (limited depth)
+        context_parts.append("## Directory Structure\n```")
+
+        exclude_dirs = {
+            ".git", "__pycache__", "node_modules", ".venv", "venv",
+            "dist", "build", ".cache", ".pytest_cache", "target",
+            ".ruff_cache", ".mypy_cache", "eggs", ".eggs"
+        }
+
+        def tree(dir_path: Path, prefix: str = "", depth: int = 0, max_depth: int = 3):
+            if depth > max_depth:
+                return []
+            lines = []
+            try:
+                items = sorted(dir_path.iterdir(), key=lambda x: (not x.is_dir(), x.name.lower()))
+                dirs = [i for i in items if i.is_dir() and i.name not in exclude_dirs and not i.name.startswith('.')]
+                files = [i for i in items if i.is_file() and not i.name.startswith('.')]
+
+                # Limit items per level
+                dirs = dirs[:10]
+                files = files[:15]
+
+                for d in dirs:
+                    lines.append(f"{prefix}{d.name}/")
+                    lines.extend(tree(d, prefix + "  ", depth + 1, max_depth))
+
+                for f in files:
+                    lines.append(f"{prefix}{f.name}")
+
+            except PermissionError:
+                pass
+            return lines
+
+        tree_lines = tree(project_path)
+        context_parts.append("\n".join(tree_lines[:100]))  # Limit to 100 lines
+        context_parts.append("```\n")
+
+        # Key source files summary
+        source_extensions = {".py", ".js", ".ts", ".go", ".rs", ".java", ".c", ".cpp", ".h"}
+        source_files = []
+        for ext in source_extensions:
+            source_files.extend(project_path.rglob(f"*{ext}"))
+            if len(source_files) > 50:
+                break
+
+        # Filter out excluded dirs
+        source_files = [
+            f for f in source_files
+            if not any(ex in str(f) for ex in exclude_dirs)
+        ][:30]
+
+        if source_files:
+            context_parts.append(f"## Source Files ({len(source_files)} found)\n")
+            for sf in source_files[:20]:
+                rel_path = sf.relative_to(project_path)
+                context_parts.append(f"- {rel_path}")
+            if len(source_files) > 20:
+                context_parts.append(f"- ... and {len(source_files) - 20} more")
+            context_parts.append("")
+
+        return "\n".join(context_parts)
+
+    except Exception as e:
+        return f"Error scanning project: {str(e)}"
+
+
 def read_directory_context(dir_path: str, max_files: int = 50) -> str:
     """
     Recursively reads files from a directory and formats them as context.

@@ -73,7 +73,9 @@ class ChatScreen(Screen):
         use_tools: bool = False,
         yolo: bool = False,
         initial_prompt_template: str | None = None,
+        initial_prompt_templates: list[str] | None = None,
         initial_strategy_template: str | None = None,
+        system_prompt: str | None = None,
     ):
         super().__init__()
         self.model_name = model_name
@@ -82,10 +84,16 @@ class ChatScreen(Screen):
         self.initial_images = initial_images
         self.use_tools = use_tools
         self.initial_prompt_template = initial_prompt_template
+        self.initial_prompt_templates = initial_prompt_templates
         self.initial_strategy_template = initial_strategy_template
-        self.active_prompt_templates: list[str] = (
-            [initial_prompt_template] if initial_prompt_template else []
-        )
+
+        # Build active prompt templates from both single and list
+        self.active_prompt_templates: list[str] = []
+        if initial_prompt_templates:
+            self.active_prompt_templates.extend(initial_prompt_templates)
+        if initial_prompt_template and initial_prompt_template not in self.active_prompt_templates:
+            self.active_prompt_templates.append(initial_prompt_template)
+
         self.active_strategy_template = initial_strategy_template
 
         if yolo:
@@ -101,7 +109,8 @@ class ChatScreen(Screen):
         self.pending_files = []
         self.pending_dir_context = None
         self.pending_clipboard_text = None
-        self.system_prompt = None
+        self.pending_project_context = None
+        self.system_prompt = system_prompt
         self.model_options = {}
 
         self.search_analysis_prompt = prompts_manager.get_prompt(
@@ -287,6 +296,10 @@ class ChatScreen(Screen):
         if self.pending_dir_context:
             parts.append(self.pending_dir_context)
 
+        # Add project context if available
+        if self.pending_project_context:
+            parts.append(self.pending_project_context)
+
         # Add file context if available
         if self.pending_files:
             file_context = utils.read_file_context(self.pending_files)
@@ -357,6 +370,7 @@ class ChatScreen(Screen):
             ("/paste", "Paste image from clipboard"),
             ("/file <paths...>", "Add files as context (supports globs)"),
             ("/dir <path>", "Scan directory and add as context"),
+            ("/project [path]", "Scan project context (README, structure, files)"),
             ("/clipboard", "Paste text from clipboard"),
             ("/system <prompt>", "Set custom system prompt"),
             ("/temperature <value>", "Set model temperature (0.0-2.0)"),
@@ -513,6 +527,7 @@ class ChatScreen(Screen):
         self.pending_files = []
         self.pending_dir_context = None
         self.pending_clipboard_text = None
+        self.pending_project_context = None
 
         # Start AI Processing
         self.process_ollama_turn()
@@ -1204,6 +1219,42 @@ class ChatScreen(Screen):
                         f'  orun "your prompt" --consensus {arg}',
                         classes="status",
                     )
+                )
+        elif cmd == "/project":
+            # Scan project context
+            path = arg.strip() if arg else "."
+            try:
+                self.chat_container.mount(
+                    Static(f"[cyan]📁 Scanning project: {path}...[/]", classes="status")
+                )
+                self.chat_container.scroll_end()
+
+                context = await asyncio.to_thread(utils.scan_project_context, path)
+                if context:
+                    # Store as pending context for next message
+                    self.pending_project_context = context
+                    # Show summary
+                    lines = context.split("\n")
+                    preview_lines = lines[:15]
+                    preview = "\n".join(preview_lines)
+                    if len(lines) > 15:
+                        preview += f"\n... ({len(lines) - 15} more lines)"
+                    self.chat_container.mount(
+                        Static(
+                            f"[green]✅ Project context loaded ({len(context)} chars)[/]\n[dim]{preview}[/]",
+                            classes="status",
+                        )
+                    )
+                else:
+                    self.chat_container.mount(
+                        Static(
+                            "[yellow]No project context found.[/]",
+                            classes="status",
+                        )
+                    )
+            except Exception as e:
+                self.chat_container.mount(
+                    Static(f"[red]Error scanning project: {e}[/]", classes="status")
                 )
         else:
             self.chat_container.mount(

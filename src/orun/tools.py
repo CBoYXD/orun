@@ -520,6 +520,192 @@ def web_search(query: str, max_results: int = 5) -> str:
         return f"Error performing web search: {str(e)}"
 
 
+# --- Git Integration Tools ---
+
+
+def git_status() -> str:
+    """Get git status of the current repository."""
+    try:
+        result = subprocess.run(
+            ["git", "status", "--porcelain", "-b"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if result.returncode != 0:
+            return f"Git error: {result.stderr.strip()}"
+
+        output = result.stdout.strip()
+        if not output:
+            return "Working directory clean, nothing to commit."
+
+        # Parse the output for better formatting
+        lines = output.split("\n")
+        branch_line = lines[0] if lines else ""
+        changes = lines[1:] if len(lines) > 1 else []
+
+        formatted = [f"**Branch:** {branch_line.replace('## ', '')}"]
+        if changes:
+            formatted.append(f"\n**Changes ({len(changes)} files):**")
+            for change in changes[:20]:  # Limit to 20 files
+                formatted.append(f"  {change}")
+            if len(changes) > 20:
+                formatted.append(f"  ... and {len(changes) - 20} more files")
+        else:
+            formatted.append("\nNo uncommitted changes.")
+
+        return "\n".join(formatted)
+
+    except subprocess.TimeoutExpired:
+        return "Error: git status timed out"
+    except FileNotFoundError:
+        return "Error: git is not installed or not in PATH"
+    except Exception as e:
+        return f"Error running git status: {str(e)}"
+
+
+def git_diff(file_path: str | None = None, staged: bool = False) -> str:
+    """Get git diff for changes. Can specify a file or get all changes."""
+    try:
+        cmd = ["git", "diff"]
+        if staged:
+            cmd.append("--staged")
+        if file_path:
+            cmd.append("--")
+            cmd.append(file_path)
+
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if result.returncode != 0:
+            return f"Git error: {result.stderr.strip()}"
+
+        output = result.stdout.strip()
+        if not output:
+            scope = f"for '{file_path}'" if file_path else ""
+            stage = "staged " if staged else ""
+            return f"No {stage}changes {scope}".strip()
+
+        # Truncate if too long
+        if len(output) > 10000:
+            output = output[:10000] + "\n\n... (diff truncated, too large)"
+
+        return output
+
+    except subprocess.TimeoutExpired:
+        return "Error: git diff timed out"
+    except FileNotFoundError:
+        return "Error: git is not installed or not in PATH"
+    except Exception as e:
+        return f"Error running git diff: {str(e)}"
+
+
+def git_log(count: int = 10) -> str:
+    """Get recent git commits."""
+    try:
+        count = min(count, 50)  # Limit to 50 commits
+        result = subprocess.run(
+            ["git", "log", f"-{count}", "--oneline", "--decorate"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if result.returncode != 0:
+            return f"Git error: {result.stderr.strip()}"
+
+        output = result.stdout.strip()
+        if not output:
+            return "No commits found."
+
+        return f"**Recent commits ({count}):**\n\n{output}"
+
+    except subprocess.TimeoutExpired:
+        return "Error: git log timed out"
+    except FileNotFoundError:
+        return "Error: git is not installed or not in PATH"
+    except Exception as e:
+        return f"Error running git log: {str(e)}"
+
+
+def git_commit(message: str, add_all: bool = False) -> str:
+    """Create a git commit with the given message. Optionally add all changes first."""
+    try:
+        # Optionally add all changes
+        if add_all:
+            add_result = subprocess.run(
+                ["git", "add", "-A"],
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+            if add_result.returncode != 0:
+                return f"Git add error: {add_result.stderr.strip()}"
+
+        # Commit
+        result = subprocess.run(
+            ["git", "commit", "-m", message],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if result.returncode != 0:
+            stderr = result.stderr.strip()
+            if "nothing to commit" in stderr.lower() or "nothing to commit" in result.stdout.lower():
+                return "Nothing to commit, working tree clean."
+            return f"Git commit error: {stderr}"
+
+        return f"Committed successfully:\n{result.stdout.strip()}"
+
+    except subprocess.TimeoutExpired:
+        return "Error: git commit timed out"
+    except FileNotFoundError:
+        return "Error: git is not installed or not in PATH"
+    except Exception as e:
+        return f"Error running git commit: {str(e)}"
+
+
+# --- Code Execution Tool ---
+
+
+def execute_python(code: str) -> str:
+    """Execute Python code in a subprocess and return the output."""
+    try:
+        # Run Python code in a subprocess with timeout
+        result = subprocess.run(
+            ["python", "-c", code],
+            capture_output=True,
+            text=True,
+            timeout=30,  # 30 second timeout
+            cwd=os.getcwd(),
+        )
+
+        output_parts = []
+
+        if result.stdout.strip():
+            output_parts.append(f"**Output:**\n```\n{result.stdout.strip()}\n```")
+
+        if result.stderr.strip():
+            output_parts.append(f"**Errors:**\n```\n{result.stderr.strip()}\n```")
+
+        if result.returncode != 0:
+            output_parts.append(f"**Exit code:** {result.returncode}")
+
+        if not output_parts:
+            return "Code executed successfully (no output)."
+
+        return "\n\n".join(output_parts)
+
+    except subprocess.TimeoutExpired:
+        return "Error: Code execution timed out (30 second limit)"
+    except FileNotFoundError:
+        return "Error: Python interpreter not found"
+    except Exception as e:
+        return f"Error executing code: {str(e)}"
+
+
 # --- Map for Execution ---
 
 AVAILABLE_TOOLS = {
@@ -532,6 +718,11 @@ AVAILABLE_TOOLS = {
     "search_arxiv": search_arxiv,
     "get_arxiv_paper": get_arxiv_paper,
     "web_search": web_search,
+    "git_status": git_status,
+    "git_diff": git_diff,
+    "git_log": git_log,
+    "git_commit": git_commit,
+    "execute_python": execute_python,
 }
 
 # --- Schemas for Ollama ---
@@ -700,6 +891,94 @@ TOOL_DEFINITIONS = [
                     },
                 },
                 "required": ["query"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "git_status",
+            "description": "Get the current git status showing branch and changed files.",
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "git_diff",
+            "description": "Show git diff for uncommitted changes. Can view all changes or specific file.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "file_path": {
+                        "type": "string",
+                        "description": "Optional: specific file to diff (default: all changes)",
+                    },
+                    "staged": {
+                        "type": "boolean",
+                        "description": "If true, show staged changes only (default: false)",
+                    },
+                },
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "git_log",
+            "description": "Show recent git commits with hash and message.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "count": {
+                        "type": "integer",
+                        "description": "Number of commits to show (default: 10, max: 50)",
+                    },
+                },
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "git_commit",
+            "description": "Create a git commit with the given message.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "message": {
+                        "type": "string",
+                        "description": "The commit message",
+                    },
+                    "add_all": {
+                        "type": "boolean",
+                        "description": "If true, stage all changes before committing (git add -A)",
+                    },
+                },
+                "required": ["message"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "execute_python",
+            "description": "Execute Python code and return the output. Use for calculations, data processing, or testing code snippets. Has a 30-second timeout.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "code": {
+                        "type": "string",
+                        "description": "The Python code to execute",
+                    },
+                },
+                "required": ["code"],
             },
         },
     },

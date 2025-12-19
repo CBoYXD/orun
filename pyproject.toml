@@ -35,6 +35,7 @@ packages = ["src/orun"]
 "data/prompts" = "orun/data/prompts"
 "data/strategies" = "orun/data/strategies"
 "data/consensus" = "orun/data/consensus"
+"data/profiles" = "orun/data/profiles"
 
 [tool.hatch.build.targets.sdist]
 include = [

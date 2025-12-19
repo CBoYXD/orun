@@ -241,3 +241,87 @@ def undo_last_turn(conversation_id: int) -> bool:
             return True
 
     return False
+
+
+def export_conversation(conversation_id: int, format: str = "json") -> str | None:
+    """Export a conversation to JSON or Markdown format."""
+    conv = Conversation.get_or_none(Conversation.id == conversation_id)
+    if not conv:
+        return None
+
+    messages = []
+    for msg in (
+        Message.select()
+        .where(Message.conversation_id == conversation_id)
+        .order_by(Message.id)
+    ):
+        messages.append({
+            "role": msg.role,
+            "content": msg.content,
+            "images": msg.images.split(",") if msg.images else None,
+            "created_at": msg.created_at.isoformat(),
+        })
+
+    if format == "json":
+        import json
+        return json.dumps({
+            "id": conv.id,
+            "model": conv.model,
+            "created_at": conv.created_at.isoformat(),
+            "updated_at": conv.updated_at.isoformat(),
+            "messages": messages,
+        }, indent=2, ensure_ascii=False)
+
+    elif format == "md" or format == "markdown":
+        lines = [
+            f"# Conversation {conv.id}",
+            f"",
+            f"**Model:** {conv.model}",
+            f"**Created:** {conv.created_at.strftime('%Y-%m-%d %H:%M')}",
+            f"**Updated:** {conv.updated_at.strftime('%Y-%m-%d %H:%M')}",
+            f"",
+            "---",
+            "",
+        ]
+        for msg in messages:
+            role = msg["role"].upper()
+            lines.append(f"## {role}")
+            lines.append("")
+            lines.append(msg["content"])
+            lines.append("")
+            if msg["images"]:
+                lines.append(f"*Images: {', '.join(msg['images'])}*")
+                lines.append("")
+            lines.append("---")
+            lines.append("")
+        return "\n".join(lines)
+
+    return None
+
+
+def import_conversation(data: dict) -> int | None:
+    """Import a conversation from exported JSON data."""
+    try:
+        with db.atomic():
+            # Create conversation
+            conv = Conversation.create(
+                model=data.get("model", "unknown"),
+                created_at=datetime.fromisoformat(data["created_at"]) if "created_at" in data else datetime.now(),
+                updated_at=datetime.fromisoformat(data["updated_at"]) if "updated_at" in data else datetime.now(),
+            )
+
+            # Create messages
+            for msg in data.get("messages", []):
+                images_str = ",".join(msg["images"]) if msg.get("images") else None
+                Message.create(
+                    conversation_id=conv.id,
+                    role=msg["role"],
+                    content=msg["content"],
+                    images=images_str,
+                    created_at=datetime.fromisoformat(msg["created_at"]) if "created_at" in msg else datetime.now(),
+                )
+
+            return conv.id
+    except Exception as e:
+        print_error(f"Failed to import conversation: {e}")
+        return None

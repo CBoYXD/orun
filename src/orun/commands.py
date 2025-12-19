@@ -1,4 +1,4 @@
-from orun import core, db, prompts_manager, tools
+from orun import core, db, profiles_manager, prompts_manager, tools
 from orun.consensus_config import consensus_config
 from orun.models_config import models_config
 from orun.rich_utils import (
@@ -324,10 +324,10 @@ def cmd_consensus_config():
 
     # Show default pipelines location
     console.print(
-        f"  Default pipelines: {consensus_config.data_dir}", style=Colors.GREY
+        f"  Default pipelines: {consensus_config.default_consensus_dir}", style=Colors.GREY
     )
-    if consensus_config.data_dir.exists():
-        default_count = len(list(consensus_config.data_dir.glob("*.json")))
+    if consensus_config.default_consensus_dir.exists():
+        default_count = len(list(consensus_config.default_consensus_dir.glob("*.json")))
         console.print(f"  Default count: {default_count}", style=Colors.GREY)
 
     console.print()
@@ -351,4 +351,102 @@ def cmd_consensus_config():
     else:
         console.print(
             "Run any consensus command to create the config file.", style=Colors.YELLOW
+        )
+
+
+def cmd_export(conversation_id: int, output: str | None = None, format: str = "json"):
+    """Export a conversation to a file."""
+    import json as json_module
+    from pathlib import Path
+
+    # Get conversation info for filename
+    conv = db.get_conversation(conversation_id)
+    if not conv:
+        print_error(f"Conversation {conversation_id} not found.")
+        return
+
+    # Export
+    content = db.export_conversation(conversation_id, format=format)
+    if not content:
+        print_error(f"Failed to export conversation {conversation_id}.")
+        return
+
+    # Determine output path
+    if output:
+        output_path = Path(output)
+    else:
+        ext = "md" if format in ("md", "markdown") else "json"
+        output_path = Path(f"conversation_{conversation_id}.{ext}")
+
+    # Write to file
+    try:
+        output_path.write_text(content, encoding="utf-8")
+        print_success(f"Exported conversation {conversation_id} to {output_path}")
+        console.print(f"  Format: {format}", style=Colors.GREY)
+        console.print(f"  Model: {conv['model']}", style=Colors.GREY)
+    except Exception as e:
+        print_error(f"Failed to write file: {e}")
+
+
+def cmd_import(file_path: str):
+    """Import a conversation from a JSON file."""
+    import json as json_module
+    from pathlib import Path
+
+    path = Path(file_path)
+    if not path.exists():
+        print_error(f"File not found: {file_path}")
+        return
+
+    try:
+        content = path.read_text(encoding="utf-8")
+        data = json_module.loads(content)
+    except json_module.JSONDecodeError as e:
+        print_error(f"Invalid JSON: {e}")
+        return
+    except Exception as e:
+        print_error(f"Failed to read file: {e}")
+        return
+
+    # Import
+    new_id = db.import_conversation(data)
+    if new_id:
+        print_success(f"Imported conversation as ID {new_id}")
+        console.print(f"  Model: {data.get('model', 'unknown')}", style=Colors.GREY)
+        console.print(f"  Messages: {len(data.get('messages', []))}", style=Colors.GREY)
+        console.print(f"\nContinue with: orun c {new_id}", style=Colors.YELLOW)
+    else:
+        print_error("Failed to import conversation.")
+
+
+def cmd_profiles():
+    """List all available profiles."""
+    profiles = profiles_manager.list_profiles()
+
+    if profiles:
+        table = create_table("Available Profiles", ["Name", "Source", "Description"])
+        for profile in profiles:
+            source_display = (
+                "[cyan]user[/cyan]"
+                if profile["source"] == "user"
+                else "[dim]default[/dim]"
+            )
+            table.add_row(
+                profile["name"],
+                source_display,
+                profile["description"][:50] + "..."
+                if len(profile["description"]) > 50
+                else profile["description"],
+                style=Colors.GREEN if profile["source"] == "user" else None,
+            )
+        print_table(table)
+        console.print("\nUse: orun chat --profile <name>", style=Colors.YELLOW)
+        console.print(
+            "Custom profiles: ~/.orun/data/profiles/", style=Colors.GREY
+        )
+    else:
+        console.print("No profiles found.", style=Colors.YELLOW)
+        console.print(
+            "Create profiles in ~/.orun/data/profiles/ as .json or .md files",
+            style=Colors.GREY,
         )

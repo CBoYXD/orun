@@ -78,6 +78,11 @@ def main():
 
             return
 
+        if cmd == "profiles":
+            commands.cmd_profiles()
+
+            return
+
         if cmd == "arxiv":
             if len(sys.argv) < 3:
                 print_warning("Usage: orun arxiv <query or arxiv_id>")
@@ -108,6 +113,27 @@ def main():
 
         if cmd == "consensus-config":
             commands.cmd_consensus_config()
+            return
+
+        if cmd == "export":
+            parser = argparse.ArgumentParser(prog="orun export")
+            parser.add_argument("id", type=int, help="Conversation ID to export")
+            parser.add_argument("-o", "--output", help="Output file path")
+            parser.add_argument(
+                "-f", "--format",
+                choices=["json", "md", "markdown"],
+                default="json",
+                help="Export format (default: json)"
+            )
+            args = parser.parse_args(sys.argv[2:])
+            commands.cmd_export(args.id, args.output, args.format)
+            return
+
+        if cmd == "import":
+            if len(sys.argv) < 3:
+                print_warning("Usage: orun import <file.json>")
+                return
+            commands.cmd_import(sys.argv[2])
             return
 
         if cmd == "chat":
@@ -141,9 +167,28 @@ def main():
                 help="Enable YOLO mode (no confirmations)",
             )
 
+            parser.add_argument(
+                "--profile",
+                dest="profile",
+                help="Use a specific profile (system prompt)",
+            )
+
             args = parser.parse_args(sys.argv[2:])
 
             image_paths = utils.get_image_paths(args.images)
+
+            # Load profile if specified
+            profile_prompts = None
+            profile_strategy = None
+            if args.profile:
+                from orun import profiles_manager
+                profile = profiles_manager.get_profile(args.profile)
+                if profile:
+                    profile_prompts = profile.prompts
+                    profile_strategy = profile.strategy
+                    console.print(f"Using profile: {args.profile} ({len(profile.prompts)} prompts)", style=Colors.CYAN)
+                else:
+                    print_warning(f"Profile '{args.profile}' not found. Run 'orun profiles' to see available profiles.")
 
             # Resolve model
 
@@ -166,14 +211,22 @@ def main():
             if args.model:
                 models_config.set_active_model(model_name)
 
+            # Merge profile prompts with command-line prompts
+            initial_prompts = profile_prompts or []
+            if args.use_prompt:
+                initial_prompts.append(args.use_prompt)
+
+            # Profile strategy can be overridden by command-line
+            initial_strategy = args.use_strategy or profile_strategy
+
             app = OrunApp(
                 model_name=model_name,
                 initial_prompt=" ".join(args.prompt) if args.prompt else None,
                 initial_images=image_paths,
                 use_tools=True,
                 yolo=args.yolo,
-                initial_prompt_template=args.use_prompt,
-                initial_strategy_template=args.use_strategy,
+                initial_prompt_templates=initial_prompts if initial_prompts else None,
+                initial_strategy_template=initial_strategy,
             )
 
             app.run()
