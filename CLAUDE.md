@@ -220,11 +220,11 @@ orun c <id>                # Continue conversation by ID
 orun last                  # Continue last conversation
 ```
 
-## System Profile (Automatic Language Matching)
+## System Profile (Core AI Behavior)
 
-orun **automatically matches the AI's response language to your input language**. This feature is enabled by default through the `system` profile.
+The `system` profile is **automatically loaded for all queries** and configures core AI behavior. It includes:
 
-### How It Works
+### 1. Automatic Language Matching
 
 - Write in **Ukrainian** → AI responds in Ukrainian
 - Write in **English** → AI responds in English
@@ -233,35 +233,69 @@ orun **automatically matches the AI's response language to your input language**
 
 The AI will maintain the same language throughout the entire response, including explanations, code comments, error messages, and examples.
 
+### 2. Smart Tool Usage
+
+The AI is configured to use tools **intelligently and sparingly**:
+
+**Key Principles**:
+- ✅ Use tools only when genuinely necessary
+- ❌ Don't call tools just "to be thorough" or "to check"
+- ✅ Think and reason first, use tools second
+- ❌ Don't use tools for simple responses (e.g., `echo "hi"` to say hello)
+
+**Examples**:
+- User: "What's 2+2?" → AI responds "4" directly (no `execute_python` needed)
+- User: "What language am I speaking?" → AI detects from text (no `web_search` needed)
+- User: "Run the tests" → AI uses `run_shell_command("pytest")` (tool needed)
+- User: "What's in config.py?" → AI uses `read_file("config.py")` (tool needed)
+
+The system includes detailed guidelines for all 14 available tools (read_file, write_file, run_shell_command, list_directory, search_files, fetch_url, web_search, search_arxiv, get_arxiv_paper, git_status, git_diff, git_log, git_commit, execute_python).
+
 ### Implementation
 
 The system profile is implemented through:
-1. **Prompt Template**: `data/prompts/language_matching.md` - Contains language matching instructions
-2. **System Profile**: `data/profiles/system.json` - Automatically loaded for all queries
+1. **Language Matching**: `data/prompts/language_matching.md` - Language detection and matching
+2. **Tool Usage Guidelines**: `data/prompts/tools_usage.md` - Smart tool usage principles
+3. **System Profile**: `data/profiles/system.json` - Combines both prompts
 
 ### Customization
 
-**To disable language matching:**
+**To disable all system behaviors:**
 Create a custom `system` profile in `~/.orun/data/profiles/system.json`:
 ```json
 {
-  "description": "Custom system profile (language matching disabled)",
+  "description": "Minimal system profile",
   "included_prompts": []
 }
 ```
 
-**To modify language matching behavior:**
-Create a custom prompt in `~/.orun/data/prompts/language_matching.md`:
-```markdown
-Your custom language matching instructions here
+**To disable only language matching (keep tool guidelines):**
+```json
+{
+  "description": "System profile without language matching",
+  "included_prompts": ["tools_usage"]
+}
 ```
+
+**To disable only tool guidelines (keep language matching):**
+```json
+{
+  "description": "System profile without tool guidelines",
+  "included_prompts": ["language_matching"]
+}
+```
+
+**To modify specific behaviors:**
+Create custom prompts in `~/.orun/data/prompts/`:
+- `language_matching.md` - Custom language matching rules
+- `tools_usage.md` - Custom tool usage guidelines
 
 **To extend the system profile:**
 Add additional prompts to your custom system profile:
 ```json
 {
   "description": "Extended system profile",
-  "included_prompts": ["language_matching", "my_custom_prompt"]
+  "included_prompts": ["language_matching", "tools_usage", "my_custom_behavior"]
 }
 ```
 
@@ -271,8 +305,11 @@ User-defined profiles and prompts in `~/.orun/data/` automatically override defa
 
 - The `system` profile is **always loaded first** for all queries (chat mode and single-shot)
 - User-specified profiles (via `--profile`) are merged after the system profile
-- This ensures consistent language behavior and core AI settings across all interactions
+- This ensures consistent core AI behavior across all interactions:
+  - Language matching: Automatic language detection and response matching
+  - Tool usage: Smart, minimal tool usage without unnecessary calls
 - The system profile has special status in `orun profiles` output (highlighted in yellow)
+- Includes 2 default prompts: `language_matching.md` + `tools_usage.md` (~5KB total)
 
 ## Prompt and Strategy Templates
 

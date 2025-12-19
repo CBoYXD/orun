@@ -1,4 +1,4 @@
 {
-  "description": "Default system profile - automatically loaded for all queries. Enables language matching and core AI behavior.",
-  "included_prompts": ["language_matching"]
+  "description": "Default system profile - automatically loaded for all queries. Enables language matching and smart tool usage.",
+  "included_prompts": ["language_matching", "tools_usage"]
 }
