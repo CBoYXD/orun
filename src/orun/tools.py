@@ -706,6 +706,52 @@ def execute_python(code: str) -> str:
         return f"Error executing code: {str(e)}"
 
 
+def call_function_model(task_description: str, context: str = "") -> str:
+    """
+    Call FunctionGemma model to perform tool operations.
+    This is a meta-tool that delegates to FunctionGemma which has access to all real tools.
+
+    Use this when you need to:
+    - Read/write files
+    - Run shell commands
+    - Search files or web
+    - Execute Python code
+    - Any file system or external operations
+
+    The FunctionGemma model will analyze your request and call the appropriate tools.
+    """
+    import ollama
+    from orun.rich_utils import console, Colors
+
+    # Check if FunctionGemma is available
+    try:
+        models_list = ollama.list()
+        function_model_available = any(
+            "functiongemma" in model.get("name", "").lower()
+            for model in models_list.get("models", [])
+        )
+
+        if not function_model_available:
+            return (
+                "FunctionGemma model is not available. "
+                "To enable advanced tool calling, run: ollama pull functiongemma:2b"
+            )
+    except Exception as e:
+        return f"Error checking for FunctionGemma: {str(e)}"
+
+    # Build prompt for FunctionGemma
+    full_prompt = f"Task: {task_description}"
+    if context:
+        full_prompt = f"{context}\n\n{full_prompt}"
+
+    try:
+        # This will be handled by the main execution loop
+        # For now, return a placeholder that indicates this needs special handling
+        return f"__FUNCTION_GEMMA_CALL__:{full_prompt}"
+    except Exception as e:
+        return f"Error calling FunctionGemma: {str(e)}"
+
+
 # --- Map for Execution ---
 
 AVAILABLE_TOOLS = {
@@ -723,6 +769,7 @@ AVAILABLE_TOOLS = {
     "git_log": git_log,
     "git_commit": git_commit,
     "execute_python": execute_python,
+    "call_function_model": call_function_model,
 }
 
 # --- Schemas for Ollama ---
@@ -982,4 +1029,57 @@ TOOL_DEFINITIONS = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "call_function_model",
+            "description": "Delegate complex tool operations to FunctionGemma specialist model. Use this for any file operations, shell commands, searches, or code execution. The specialist model will handle the actual tool calls.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "task_description": {
+                        "type": "string",
+                        "description": "Clear description of what needs to be done (e.g., 'Read src/main.py and find all TODO comments', 'Run tests and report results')",
+                    },
+                    "context": {
+                        "type": "string",
+                        "description": "Optional: Additional context or background information",
+                    },
+                },
+                "required": ["task_description"],
+            },
+        },
+    },
 ]
+
+
+def get_tools_for_model(model_name: str, use_function_model: bool = False) -> list:
+    """
+    Get appropriate tools for a specific model.
+
+    Logic:
+    - If use_function_model is False: all models get all tools (normal behavior)
+    - If use_function_model is True:
+        - Regular models: only get call_function_model
+        - FunctionGemma: gets all real tools (except call_function_model)
+
+    Args:
+        model_name: Name of the model
+        use_function_model: Whether FunctionGemma delegation is enabled
+
+    Returns:
+        List of tool definitions appropriate for this model
+    """
+    if not use_function_model:
+        # Normal behavior: all models get all tools
+        return TOOL_DEFINITIONS
+
+    is_function_gemma = "functiongemma" in model_name.lower() or "function-gemma" in model_name.lower()
+
+    if is_function_gemma:
+        # FunctionGemma gets all tools EXCEPT call_function_model
+        return [tool for tool in TOOL_DEFINITIONS if tool["function"]["name"] != "call_function_model"]
+    else:
+        # Regular models only get call_function_model
+        return [tool for tool in TOOL_DEFINITIONS if tool["function"]["name"] == "call_function_model"]
+

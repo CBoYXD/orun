@@ -340,6 +340,40 @@ class ModelsConfig:
 
         return None
 
+    def is_function_delegation_enabled(self) -> bool:
+        """Check if FunctionGemma delegation is enabled."""
+        try:
+            if self.config_path.exists():
+                with open(self.config_path, "r", encoding="utf-8") as f:
+                    config = json.load(f)
+                    return config.get("function_delegation", {}).get("enabled", False)
+        except Exception:
+            pass
+        return False
+
+    def set_function_delegation(self, enabled: bool) -> bool:
+        """Enable or disable FunctionGemma delegation."""
+        try:
+            if self.config_path.exists():
+                with open(self.config_path, "r", encoding="utf-8") as f:
+                    config = json.load(f)
+            else:
+                config = {}
+
+            if "function_delegation" not in config:
+                config["function_delegation"] = {}
+
+            config["function_delegation"]["enabled"] = enabled
+            config["function_delegation"]["model"] = "functiongemma:2b"
+
+            with open(self.config_path, "w", encoding="utf-8") as f:
+                json.dump(config, f, indent=2)
+
+            return True
+        except Exception as e:
+            console.print(f"Error saving function delegation config: {e}", style=Colors.RED)
+            return False
+
 
 # Global instance
 models_config = ModelsConfig()

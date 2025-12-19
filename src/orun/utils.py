@@ -72,6 +72,77 @@ def ensure_ollama_running():
             sys.exit(1)
 
 
+def ensure_function_gemma_available(auto_download: bool = True) -> bool:
+    """
+    Check if FunctionGemma model is available in Ollama.
+    Optionally download it if not found.
+
+    Args:
+        auto_download: If True, automatically download FunctionGemma if missing
+
+    Returns:
+        True if FunctionGemma is available, False otherwise
+    """
+    try:
+        models_list = ollama.list()
+        function_model_found = any(
+            "functiongemma" in model.get("name", "").lower()
+            for model in models_list.get("models", [])
+        )
+
+        if function_model_found:
+            return True
+
+        if not auto_download:
+            return False
+
+        # Ask user if they want to download
+        console.print("\n[yellow]FunctionGemma model not found.[/yellow]")
+        console.print(
+            "[dim]FunctionGemma is a specialized 2B model optimized for tool calling.[/dim]"
+        )
+        console.print("[dim]It will significantly improve tool usage accuracy.[/dim]\n")
+
+        response = console.input(
+            "[cyan]Download FunctionGemma 2B model? (~1.6GB) [y/N]: [/cyan]"
+        ).lower()
+
+        if response != "y":
+            console.print(
+                "[yellow]FunctionGemma delegation disabled. Using direct tool calling.[/yellow]"
+            )
+            return False
+
+        # Download the model
+        console.print("\n[cyan]Downloading functiongemma:2b...[/cyan]")
+        console.print("[dim]This may take a few minutes...[/dim]\n")
+
+        try:
+            # Use ollama pull to download
+            result = subprocess.run(
+                ["ollama", "pull", "functiongemma:2b"],
+                capture_output=False,
+                text=True,
+            )
+
+            if result.returncode == 0:
+                console.print(
+                    "\n[green]✓ FunctionGemma downloaded successfully![/green]"
+                )
+                return True
+            else:
+                print_error("Failed to download FunctionGemma")
+                return False
+
+        except Exception as e:
+            print_error(f"Error downloading FunctionGemma: {e}")
+            return False
+
+    except Exception as e:
+        print_warning(f"Could not check for FunctionGemma: {e}")
+        return False
+
+
 def handle_cli_errors(func):
     """Decorator to handle KeyboardInterrupt and general exceptions gracefully."""
 
