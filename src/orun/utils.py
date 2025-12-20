@@ -8,8 +8,14 @@ import time
 from pathlib import Path
 
 import ollama
-from PIL import Image, ImageGrab
+from PIL import Image
 
+try:
+    from PIL import ImageGrab
+except Exception:
+    ImageGrab = None
+
+from orun import config as orun_config
 from orun.rich_utils import Colors, console, print_error, print_info, print_warning
 
 
@@ -194,6 +200,67 @@ def setup_console():
         sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
 
+def ensure_orun_config():
+    """Ensure default config sections exist without overwriting user settings."""
+    try:
+        return orun_config.ensure_defaults()
+    except Exception as e:
+        print_warning(f"Could not update config defaults: {e}")
+        return {}
+
+
+def _resolve_allowed_roots(entries: list[str]) -> list[Path]:
+    roots = []
+    for entry in entries:
+        if entry in ("<cwd>", "$CWD"):
+            roots.append(Path.cwd())
+            continue
+        if entry in ("<home>", "$HOME"):
+            roots.append(Path.home())
+            continue
+        expanded = os.path.expandvars(str(entry))
+        path = Path(expanded).expanduser()
+        if not path.is_absolute():
+            path = Path.cwd() / path
+        roots.append(path)
+    if not roots:
+        roots.append(Path.cwd())
+    return roots
+
+
+def _is_relative_to(path: Path, root: Path) -> bool:
+    try:
+        return path.is_relative_to(root)
+    except AttributeError:
+        try:
+            path.relative_to(root)
+            return True
+        except Exception:
+            return False
+
+
+def is_path_allowed(path: str) -> tuple[bool, str]:
+    sandbox = orun_config.get_section("sandbox")
+    if not sandbox.get("enabled", True):
+        return True, ""
+    roots = _resolve_allowed_roots(sandbox.get("allowed_roots", ["<cwd>"]))
+    roots.append(Path.home() / ".orun")
+    target = Path(path).expanduser()
+    try:
+        target = target.resolve(strict=False)
+    except TypeError:
+        target = target.resolve()
+    for root in roots:
+        try:
+            resolved_root = root.expanduser()
+            resolved_root = resolved_root.resolve(strict=False)
+        except TypeError:
+            resolved_root = root.resolve()
+        if _is_relative_to(target, resolved_root):
+            return True, ""
+    return False, f"Path '{path}' is outside the sandbox roots."
+
+
 def get_screenshot_path(index: int) -> str | None:
     """Finds a screenshot by index (1-based, newest first)."""
     target_dir = next((d for d in SCREENSHOT_DIRS if d.exists()), None)
@@ -267,6 +334,8 @@ def save_clipboard_image() -> str | None:
     Returns the file path if successful, None if no image in clipboard.
     """
     try:
+        if ImageGrab is None:
+            return None
         # Get image from clipboard
         clipboard_content = ImageGrab.grabclipboard()
 
@@ -339,10 +408,29 @@ def read_file_context(file_paths: list[str]) -> str:
     if not file_paths:
         return ""
 
+    settings = orun_config.get_section("context")
+    file_limit = settings.get("file_max_chars", 20000)
+    total_limit = settings.get("total_chars", 80000)
+
     context_parts = []
+    seen = set()
+    total_chars = 0
     for file_path in file_paths:
         try:
-            path = Path(file_path)
+            path = Path(file_path).expanduser()
+            try:
+                resolved = path.resolve(strict=False)
+            except TypeError:
+                resolved = path.resolve()
+            if resolved in seen:
+                continue
+            seen.add(resolved)
+
+            allowed, reason = is_path_allowed(str(path))
+            if not allowed:
+                print_error(reason)
+                continue
+
             if not path.exists():
                 print_error(f"File not found: {file_path}")
                 continue
@@ -355,13 +443,24 @@ def read_file_context(file_paths: list[str]) -> str:
             try:
                 content = path.read_text(encoding="utf-8")
             except UnicodeDecodeError:
-                # Try with latin-1 as fallback
                 try:
                     content = path.read_text(encoding="latin-1")
                 except Exception as e:
                     print_error(f"Could not read {file_path}: {e}")
                     continue
 
+            if file_limit and len(content) > file_limit:
+                content = content[:file_limit] + "\n... (truncated)"
+
+            remaining = total_limit - total_chars if total_limit else None
+            if remaining is not None:
+                if remaining <= 0:
+                    print_warning("Context limit reached; skipping remaining files.")
+                    break
+                if len(content) > remaining:
+                    content = content[:remaining] + "\n... (truncated)"
+
+            total_chars += len(content)
             context_parts.append(f"--- File: {file_path} ---\n{content}\n")
             console.print(f"📄 Added file: {file_path}", style=Colors.DIM)
 
@@ -513,6 +612,24 @@ def write_clipboard_text(text: str) -> bool:
         return False
 
 
+def copy_to_clipboard(text: str) -> bool:
+    """Compatibility wrapper for clipboard writes."""
+    return write_clipboard_text(text)
+
+
+def write_to_file(file_path: str, content: str) -> bool:
+    """Write content to a file, creating parent directories if needed."""
+    try:
+        path = Path(file_path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content, encoding="utf-8")
+        console.print(f"✅ Output saved to: {file_path}", style=Colors.GREEN)
+        return True
+    except Exception as e:
+        print_error(f"Failed to write output file: {e}")
+        return False
+
+
 def scan_project_context(path: str = ".", max_files: int = 30) -> str:
     """
     Scan a project directory and build a context summary.
@@ -660,12 +777,22 @@ def scan_project_context(path: str = ".", max_files: int = 30) -> str:
         return f"Error scanning project: {str(e)}"
 
 
-def read_directory_context(dir_path: str, max_files: int = 50) -> str:
+def read_directory_context(
+    dir_path: str,
+    max_files: int | None = None,
+    exclude_paths: list[str] | None = None,
+) -> str:
     """
     Recursively reads files from a directory and formats them as context.
     Skips common binary/cache directories and limits total files.
     """
     try:
+        settings = orun_config.get_section("context")
+        max_files = max_files or settings.get("max_files", 50)
+        scan_limit = settings.get("scan_limit", max_files)
+        file_limit = settings.get("file_max_chars", 20000)
+        total_limit = settings.get("total_chars", 80000)
+
         path = Path(dir_path)
         if not path.exists():
             print_error(f"Directory not found: {dir_path}")
@@ -673,6 +800,11 @@ def read_directory_context(dir_path: str, max_files: int = 50) -> str:
 
         if not path.is_dir():
             print_error(f"Not a directory: {dir_path}")
+            return ""
+
+        allowed, reason = is_path_allowed(str(path))
+        if not allowed:
+            print_error(reason)
             return ""
 
         # Common patterns to exclude
@@ -705,6 +837,15 @@ def read_directory_context(dir_path: str, max_files: int = 50) -> str:
             ".gz",
         }
 
+        excluded = set()
+        for item in exclude_paths or []:
+            candidate = Path(item).expanduser()
+            try:
+                candidate = candidate.resolve(strict=False)
+            except TypeError:
+                candidate = candidate.resolve()
+            excluded.add(candidate)
+
         # Find all files
         all_files = []
         for root, dirs, files in os.walk(path):
@@ -713,39 +854,62 @@ def read_directory_context(dir_path: str, max_files: int = 50) -> str:
 
             for file in files:
                 file_path = Path(root) / file
-                if file_path.suffix.lower() not in exclude_exts:
-                    all_files.append(file_path)
+                if file_path.suffix.lower() in exclude_exts:
+                    continue
+                try:
+                    resolved = file_path.resolve(strict=False)
+                except TypeError:
+                    resolved = file_path.resolve()
+                if resolved in excluded:
+                    continue
+                all_files.append(file_path)
 
-                if len(all_files) >= max_files:
+                if len(all_files) >= scan_limit:
                     break
 
-            if len(all_files) >= max_files:
+            if len(all_files) >= scan_limit:
                 break
 
         if not all_files:
             print_warning(f"No readable files found in {dir_path}")
             return ""
 
+        all_files = sorted(all_files)
+        if max_files and len(all_files) > max_files:
+            step = len(all_files) / max_files
+            sampled = []
+            for idx in range(max_files):
+                sampled.append(all_files[int(idx * step)])
+            all_files = sampled
+
         # Read and format files
         context_parts = []
         files_read = 0
+        total_chars = 0
 
-        for file_path in all_files[:max_files]:
+        for file_path in all_files:
             try:
                 # Try to read as text
                 content = file_path.read_text(encoding="utf-8", errors="ignore")
 
-                # Skip if too large (>100KB)
-                if len(content) > 100000:
-                    console.print(
-                        f"⏭️  Skipped (too large): {file_path.relative_to(path)}",
-                        style=Colors.DIM,
-                    )
-                    continue
+                if file_limit and len(content) > file_limit:
+                    content = content[:file_limit] + "\n... (truncated)"
+
+                remaining = total_limit - total_chars if total_limit else None
+                if remaining is not None:
+                    if remaining <= 0:
+                        print_warning(
+                            "Context limit reached; skipping remaining files."
+                        )
+                        break
+                    if len(content) > remaining:
+                        content = content[:remaining] + "\n... (truncated)"
+
 
                 rel_path = file_path.relative_to(path)
                 context_parts.append(f"--- File: {rel_path} ---\n{content}\n")
                 files_read += 1
+                total_chars += len(content)
                 console.print(f"📄 Added: {rel_path}", style=Colors.DIM)
 
             except Exception:

@@ -25,9 +25,8 @@ class YoloMode:
 
     # Removed start_hotkey_listener and stop_hotkey_listener methods
 
-    def create_default_config(self):
-        """Create a default configuration file."""
-        default_config = {
+    def _default_config(self):
+        return {
             "yolo": {
                 "forbidden_commands": [
                     "rm -rf",
@@ -118,6 +117,10 @@ class YoloMode:
             }
         }
 
+    def create_default_config(self):
+        """Create a default configuration file."""
+        default_config = self._default_config()
+
         try:
             with open(self.config_path, "w") as f:
                 json.dump(default_config, f, indent=2)
@@ -130,11 +133,18 @@ class YoloMode:
             if self.config_path.exists():
                 with open(self.config_path, "r") as f:
                     config = json.load(f)
+                    defaults = self._default_config().get("yolo", {})
                     yolo_config = config.get("yolo", {})
-                    self.forbidden_commands = yolo_config.get("forbidden_commands", [])
-                    self.whitelisted_commands = yolo_config.get(
-                        "whitelisted_commands", []
+                    self.forbidden_commands = yolo_config.get(
+                        "forbidden_commands", defaults.get("forbidden_commands", [])
                     )
+                    self.whitelisted_commands = yolo_config.get(
+                        "whitelisted_commands", defaults.get("whitelisted_commands", [])
+                    )
+            else:
+                defaults = self._default_config().get("yolo", {})
+                self.forbidden_commands = defaults.get("forbidden_commands", [])
+                self.whitelisted_commands = defaults.get("whitelisted_commands", [])
         except Exception as e:
             console.print(f"Warning: Could not load config: {e}", style=Colors.YELLOW)
 

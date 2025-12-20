@@ -178,8 +178,16 @@ def cmd_set_active(target: str):
         print_error(f"Could not set active model. '{target}' not found.")
 
 
-def cmd_prompts():
-    """Lists all available prompt templates using a Rich table."""
+def cmd_prompts(show: str | None = None):
+    """Lists all available prompt templates or shows a specific template."""
+    if show:
+        content = prompts_manager.get_prompt(show)
+        if content:
+            console.print(content)
+        else:
+            print_error(f"Prompt template '{show}' not found.")
+        return
+
     prompts = prompts_manager.list_prompts()
     if prompts:
         table = create_table("Available Prompt Templates", ["Template Name"])
@@ -190,8 +198,16 @@ def cmd_prompts():
         console.print("No prompt templates found.", style=Colors.YELLOW)
 
 
-def cmd_strategies():
-    """Lists all available strategy templates using a Rich table."""
+def cmd_strategies(show: str | None = None):
+    """Lists all available strategy templates or shows a specific template."""
+    if show:
+        content = prompts_manager.get_strategy(show)
+        if content:
+            console.print(content)
+        else:
+            print_error(f"Strategy template '{show}' not found.")
+        return
+
     strategies = prompts_manager.list_strategies()
     if strategies:
         table = create_table(

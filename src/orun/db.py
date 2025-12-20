@@ -11,6 +11,7 @@ from peewee import (
     fn,
 )
 
+from orun import config as orun_config
 from orun.rich_utils import Colors, console, print_error
 
 DB_DIR = Path.home() / ".orun"
@@ -44,7 +45,16 @@ class Message(BaseModel):
 def initialize():
     """Initialize database connection and tables."""
     db.connect(reuse_if_open=True)
-    db.create_tables([Conversation, Message])
+    db.create_tables([Conversation, Message], safe=True)
+    try:
+        db.execute_sql(
+            "CREATE INDEX IF NOT EXISTS idx_conversation_updated_at ON conversation(updated_at)"
+        )
+        db.execute_sql(
+            "CREATE INDEX IF NOT EXISTS idx_message_conversation_id ON message(conversation_id)"
+        )
+    except Exception as e:
+        print_error(f"Failed to create indexes: {e}")
 
     maintain_db_size()
 
@@ -55,8 +65,13 @@ def maintain_db_size():
         if not DB_PATH.exists():
             return
 
+        settings = orun_config.get_section("db")
+        max_size_mb = settings.get("max_size_mb", 10)
+        cleanup_fraction = settings.get("cleanup_fraction", 0.10)
+        min_age_days = settings.get("min_age_days", 0.1)
+
         size_mb = DB_PATH.stat().st_size / (1024 * 1024)
-        if size_mb > 10:
+        if size_mb > max_size_mb:
             # 1. Fetch statistics for all conversations
             # We need ID, Last Update Time, and Estimated Size (Sum of text content)
             # COALESCE ensures we don't get None for empty conversations
@@ -88,8 +103,8 @@ def maintain_db_size():
                 # Ensure a minimum age factor of 0.1 days to avoid zeroing out new heavy queries completely,
                 # but effectively protecting them compared to old stuff.
                 age_days = (now - c_updated).total_seconds() / 86400.0
-                if age_days < 0.1:
-                    age_days = 0.1
+                if age_days < min_age_days:
+                    age_days = min_age_days
 
                 # Profitability Score = Age * Size
                 # Large, Old files have massive scores.
@@ -102,8 +117,8 @@ def maintain_db_size():
             if total_tracked_size == 0:
                 return
 
-            # Target: Free up ~10% of the text volume
-            target_reduction = total_tracked_size * 0.10
+            # Target: Free up configured percentage of the text volume
+            target_reduction = total_tracked_size * cleanup_fraction
 
             # Sort by Score Descending (Highest Profitability First)
             candidates.sort(key=lambda x: x["score"], reverse=True)

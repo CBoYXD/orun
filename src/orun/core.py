@@ -3,6 +3,7 @@ from pathlib import Path
 
 import ollama
 
+from orun import config as orun_config
 from orun import db, prompts_manager, tools, utils
 from orun.rich_utils import Colors, console, print_error, print_warning
 from orun.yolo import yolo_mode
@@ -27,8 +28,66 @@ def handle_ollama_stream(stream, silent: bool = False) -> str:
     return full_response
 
 
+def _get_function_gemma_model_name() -> str | None:
+    try:
+        response = ollama.list()
+        if hasattr(response, "models"):
+            models = response.models
+        elif isinstance(response, dict):
+            models = response.get("models", [])
+        else:
+            models = []
+
+        for model in models:
+            name = ""
+            if hasattr(model, "model"):
+                name = model.model
+            elif hasattr(model, "name"):
+                name = model.name
+            elif isinstance(model, dict):
+                name = model.get("model", model.get("name", ""))
+
+            if "functiongemma" in name.lower():
+                return name
+    except Exception:
+        return None
+    return None
+
+
+def run_function_gemma_task(task_description: str, context: str = "") -> str:
+    full_prompt = f"Task: {task_description}".strip()
+    if context:
+        full_prompt = f"{context}\n\n{full_prompt}"
+
+    model_name = _get_function_gemma_model_name()
+    if not model_name:
+        return (
+            "FunctionGemma model is not available. "
+            "To enable advanced tool calling, run: ollama pull functiongemma:270m"
+        )
+
+    messages = [{"role": "user", "content": full_prompt}]
+    tool_defs = tools.get_tools_for_model(model_name)
+
+    response = ollama.chat(
+        model=model_name, messages=messages, tools=tool_defs, stream=False
+    )
+    msg = response["message"]
+
+    if msg.get("tool_calls"):
+        messages.append(msg)
+        execute_tool_calls(msg["tool_calls"], messages)
+        response = ollama.chat(model=model_name, messages=messages, stream=False)
+        return response["message"]["content"]
+
+    return msg.get("content", "")
+
+
 def execute_tool_calls(tool_calls, messages):
     """Executes tool calls with user confirmation and updates messages."""
+    limits = orun_config.get_section("limits")
+    preview_limit = limits.get("tool_preview_chars", 200)
+
     for tool in tool_calls:
         func_name = tool.function.name
         args = tool.function.arguments
@@ -39,6 +98,10 @@ def execute_tool_calls(tool_calls, messages):
                 args = json.loads(args)
             except json.JSONDecodeError:
                 pass  # It might be a malformed string or actually a dict disguised
+
+        # Skip displaying call_function_model - it's just a proxy to FunctionGemma
+        # We show the actual tool calls from FunctionGemma instead
+        is_proxy_call = func_name == "call_function_model"
 
         # Special handling for shell commands with YOLO mode
         should_confirm = True
@@ -59,12 +122,17 @@ def execute_tool_calls(tool_calls, messages):
             # Skip confirmation if needed
             if skip_confirm:
                 should_confirm = False
-                console.print(f"\n🛠️  AI executing: {func_name}", style=Colors.MAGENTA)
-                console.print(f"Arguments: {args}", style=Colors.DIM)
-                if "WHITELISTED" in skip_reason:
-                    console.print(skip_reason, style=Colors.GREEN)
-                elif "YOLO MODE" in skip_reason:
-                    console.print(skip_reason, style=Colors.YELLOW)
+                if not is_proxy_call:  # Don't show proxy calls
+                    console.print(f"\n🛠️  AI executing: {func_name}", style=Colors.MAGENTA)
+                    console.print(f"Arguments: {args}", style=Colors.DIM)
+                    if "WHITELISTED" in skip_reason:
+                        console.print(skip_reason, style=Colors.GREEN)
+                    elif "YOLO MODE" in skip_reason:
+                        console.print(skip_reason, style=Colors.YELLOW)
+
+        # Skip confirmation for proxy calls (call_function_model)
+        if is_proxy_call:
+            should_confirm = False
 
         # Confirmation Prompt (or display if auto-confirming)
         if should_confirm:
@@ -91,26 +159,40 @@ def execute_tool_calls(tool_calls, messages):
                 continue
 
         # Execute the tool
-        func = tools.AVAILABLE_TOOLS.get(func_name)
-        if func:
-            console.print("Running...", style=Colors.DIM)
-            result = func(**args)
-
-            # Check if result is excessively long (e.g. reading a huge file)
-            preview = result[:100] + "..." if len(result) > 100 else result
-            console.print(f"Result: {preview}", style=Colors.DIM)
-
-            messages.append(
-                {
-                    "role": "tool",
-                    "content": str(result),
-                }
-            )
+        result = None
+        if func_name == "call_function_model":
+            if isinstance(args, dict):
+                result = run_function_gemma_task(
+                    args.get("task_description", ""), args.get("context", "")
+                )
+            else:
+                result = run_function_gemma_task(str(args), "")
         else:
-            print_error(f"Tool '{func_name}' not found.")
-            messages.append(
-                {"role": "tool", "content": f"Error: Tool '{func_name}' not found."}
+            func = tools.AVAILABLE_TOOLS.get(func_name)
+            if func:
+                console.print("Running...", style=Colors.DIM)
+                result = func(**args)
+            else:
+                print_error(f"Tool '{func_name}' not found.")
+                messages.append(
+                    {
+                        "role": "tool",
+                        "content": f"Error: Tool '{func_name}' not found.",
+                    }
+                )
+                continue
+
+        if result is not None:
+            result_text = str(result)
+            preview = (
+                result_text[:preview_limit] + "..."
+                if preview_limit and len(result_text) > preview_limit
+                else result_text
             )
+            # Don't show result for proxy calls - FunctionGemma will show its own tool results
+            if not is_proxy_call:
+                console.print(f"Result: {preview}", style=Colors.DIM)
+            messages.append({"role": "tool", "content": result_text})
 
 
 def run_single_shot(

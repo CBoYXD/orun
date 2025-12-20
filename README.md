@@ -65,6 +65,12 @@ orun prompts      # List all prompt templates
 orun strategies   # List all strategy templates
 ```
 
+Preview a specific template:
+```bash
+orun prompts --show review_code
+orun strategies --show cot
+```
+
 In chat mode, apply templates dynamically:
 ```bash
 /prompt analyze_paper
@@ -237,5 +243,5 @@ orun last
 ```
 
 ## Requirements
-- Python 3.12+
+- Python 3.10+
 - [Ollama](https://ollama.com/) running locally

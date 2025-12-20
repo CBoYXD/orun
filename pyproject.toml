@@ -1,7 +1,7 @@
 [project]
 name = "orun-py"
 version = "1.4.0"
-description = "Add your description here"
+description = "Python CLI agent wrapper for Ollama with tools, templates, and pipelines."
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [

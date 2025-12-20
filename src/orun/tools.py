@@ -1,13 +1,18 @@
 import html
+import json
 import os
 import subprocess
+import time
+import urllib.parse
 import urllib.request
 from html.parser import HTMLParser
 
 import arxiv
-import ollama
 from ddgs import DDGS
 from langdetect import LangDetectException, detect
+from orun import config as orun_config, utils
+from orun.cache import get_cached_text, set_cached_text
+from orun.search_config import search_config
 
 # --- Helper for HTML Parsing ---
 
@@ -208,10 +213,18 @@ class StructuredHTMLParser(HTMLParser):
 def read_file(file_path: str) -> str:
     """Reads the content of a file."""
     try:
+        allowed, reason = utils.is_path_allowed(file_path)
+        if not allowed:
+            return f"Error: {reason}"
         if not os.path.exists(file_path):
             return f"Error: File '{file_path}' does not exist."
         with open(file_path, "r", encoding="utf-8") as f:
-            return f.read()
+            content = f.read()
+            limits = orun_config.get_section("limits")
+            max_chars = limits.get("file_read_max_chars", 200000)
+            if max_chars and len(content) > max_chars:
+                content = content[:max_chars] + "\n... (truncated)"
+            return content
     except Exception as e:
         return f"Error reading file: {str(e)}"
 
@@ -219,6 +232,9 @@ def read_file(file_path: str) -> str:
 def write_file(file_path: str, content: str) -> str:
     """Writes content to a file (overwrites)."""
     try:
+        allowed, reason = utils.is_path_allowed(file_path)
+        if not allowed:
+            return f"Error: {reason}"
         directory = os.path.dirname(file_path)
         if directory and not os.path.exists(directory):
             os.makedirs(directory)
@@ -232,11 +248,25 @@ def write_file(file_path: str, content: str) -> str:
 def run_shell_command(command: str) -> str:
     """Executes a shell command."""
     try:
-        result = subprocess.run(command, shell=True, capture_output=True, text=True)
+        limits = orun_config.get_section("limits")
+        timeout = limits.get("shell_timeout_seconds", 20)
+        max_chars = limits.get("shell_output_limit", 12000)
+        result = subprocess.run(
+            command,
+            shell=True,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
         output = result.stdout
         if result.stderr:
             output += f"\nSTDERR:\n{result.stderr}"
-        return output.strip()
+        output = output.strip()
+        if max_chars and len(output) > max_chars:
+            output = output[:max_chars] + "\n... (truncated)"
+        return output
+    except subprocess.TimeoutExpired:
+        return "Error executing command: timed out"
     except Exception as e:
         return f"Error executing command: {str(e)}"
 
@@ -244,6 +274,9 @@ def run_shell_command(command: str) -> str:
 def list_directory(path: str = ".") -> str:
     """Lists files and directories in a given path."""
     try:
+        allowed, reason = utils.is_path_allowed(path)
+        if not allowed:
+            return f"Error: {reason}"
         if not os.path.exists(path):
             return f"Error: Path '{path}' does not exist."
 
@@ -267,6 +300,9 @@ def search_files(path: str, pattern: str) -> str:
     """Searches for a text pattern in files within a directory (recursive)."""
     matches = []
     try:
+        allowed, reason = utils.is_path_allowed(path)
+        if not allowed:
+            return f"Error: {reason}"
         for root, _, files in os.walk(path):
             for file in files:
                 # Skip common hidden/binary folders to save time
@@ -306,37 +342,60 @@ def fetch_url(url: str) -> str:
     if not normalized.startswith(("http://", "https://")):
         normalized = f"https://{normalized}"
 
+    cache_key = f"fetch_url:{normalized}"
+    cached = get_cached_text(cache_key)
+    if cached:
+        return cached
+
+    limits = orun_config.get_section("limits")
+    timeout = limits.get("fetch_timeout_seconds", 20)
+    max_chars = limits.get("fetch_max_chars", 15000)
+    retries = limits.get("fetch_retry_count", 1)
+
+    def _truncate(text: str) -> str:
+        if max_chars and len(text) > max_chars:
+            return text[:max_chars] + "\n... (content truncated)"
+        return text
+
     # Try Jina AI Reader first (optimized for LLM, returns clean markdown)
-    try:
-        jina_url = f"https://r.jina.ai/{normalized}"
-        headers = {
-            "User-Agent": "Mozilla/5.0 (compatible; orun/1.0)",
-            "X-Return-Format": "markdown",  # Ensure markdown format
-        }
-        req = urllib.request.Request(jina_url, headers=headers)
+    for attempt in range(retries + 1):
+        try:
+            jina_url = f"https://r.jina.ai/{normalized}"
+            headers = {
+                "User-Agent": "Mozilla/5.0 (compatible; orun/1.0)",
+                "X-Return-Format": "markdown",
+            }
+            req = urllib.request.Request(jina_url, headers=headers)
 
-        with urllib.request.urlopen(req, timeout=30) as response:
-            content = response.read().decode("utf-8", errors="ignore")
+            with urllib.request.urlopen(req, timeout=timeout) as response:
+                content = response.read().decode("utf-8", errors="ignore")
 
-            # Jina returns clean markdown - just validate and return
-            if content and len(content) > 50:  # Basic validation
-                if len(content) > 15000:
-                    content = content[:15000] + "\n... (content truncated)"
-
-                return f"{content}\n\nSource: {normalized} (via Jina AI Reader)".strip()
-    except Exception:
-        # Jina failed, fall back to custom parser
-        pass
+                if content and len(content) > 50:
+                    content = _truncate(content)
+                    result = (
+                        f"{content}\n\nSource: {normalized} (via Jina AI Reader)"
+                    ).strip()
+                    set_cached_text(cache_key, result)
+                    return result
+        except Exception:
+            if attempt < retries:
+                time.sleep(1)
+            continue
 
     # Fallback: Custom HTML parser
-    try:
-        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
-        req = urllib.request.Request(normalized, headers=headers)
-        with urllib.request.urlopen(req, timeout=30) as response:
-            charset = response.headers.get_content_charset() or "utf-8"
-            html_content = response.read().decode(charset, errors="ignore")
-    except Exception as e:
-        return f"Error fetching URL: {str(e)}"
+    for attempt in range(retries + 1):
+        try:
+            headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+            req = urllib.request.Request(normalized, headers=headers)
+            with urllib.request.urlopen(req, timeout=timeout) as response:
+                charset = response.headers.get_content_charset() or "utf-8"
+                html_content = response.read().decode(charset, errors="ignore")
+            break
+        except Exception as e:
+            if attempt < retries:
+                time.sleep(1)
+                continue
+            return f"Error fetching URL: {str(e)}"
 
     parser = StructuredHTMLParser()
     parser.feed(html_content)
@@ -345,16 +404,16 @@ def fetch_url(url: str) -> str:
     if not text:
         text = "No readable text content found."
 
-    if len(text) > 15000:
-        text = text[:15000] + "\n... (content truncated)"
+    text = _truncate(text)
 
     if parser.title:
         header = f"{parser.title}\n{'=' * len(parser.title)}\n\n"
     else:
         header = ""
 
-    return f"{header}{text}\n\nSource: {normalized}".strip()
-
+    result = f"{header}{text}\n\nSource: {normalized}".strip()
+    set_cached_text(cache_key, result)
+    return result
 
 def search_arxiv(query: str, max_results: int = 5) -> str:
     """Search for papers on arXiv by query string."""
@@ -460,40 +519,88 @@ def get_arxiv_paper(arxiv_id: str) -> str:
 
 def web_search(query: str, max_results: int = 5) -> str:
     """
-    Search the web using DuckDuckGo with automatic language detection.
+    Search the web using Google Custom Search API (with DuckDuckGo fallback).
     Detects query language and returns region-appropriate results.
     """
+    limits = orun_config.get_section("limits")
     try:
-        max_results = min(int(max_results), 10)  # Limit to max 10 results
+        max_limit = limits.get("web_search_max_results", 5)
+        max_results = min(int(max_results), int(max_limit))
     except (ValueError, TypeError):
-        max_results = 5
+        max_results = limits.get("web_search_max_results", 5)
+
+    cache_key = f"web_search:{query}:{max_results}"
+    cached = get_cached_text(cache_key)
+    if cached:
+        return cached
+
+    timeout = limits.get("fetch_timeout_seconds", 20)
+    retries = limits.get("web_search_retry_count", 1)
+    last_error = None
+
+    if search_config.has_google_credentials():
+        for attempt in range(retries + 1):
+            try:
+                params = urllib.parse.urlencode({
+                    "key": search_config.google_api_key,
+                    "cx": search_config.google_cse_id,
+                    "q": query,
+                    "num": max_results,
+                })
+                url = f"https://www.googleapis.com/customsearch/v1?{params}"
+                req = urllib.request.Request(
+                    url,
+                    headers={"User-Agent": "Mozilla/5.0 (compatible; orun/1.0)"},
+                )
+                with urllib.request.urlopen(req, timeout=timeout) as response:
+                    payload = response.read().decode("utf-8", errors="ignore")
+                data = json.loads(payload)
+                items = data.get("items", [])
+                if not items:
+                    result = f"No results found for query: {query}"
+                else:
+                    output = [f"**Web Search Results for '{query}':**\n"]
+                    for i, item in enumerate(items[:max_results], 1):
+                        title = item.get("title", "No title")
+                        link = item.get("link", "")
+                        snippet = item.get("snippet", "No description")
+                        output.append(f"{i}. **{title}**")
+                        output.append(f"   URL: {link}")
+                        output.append(f"   {snippet}\n")
+                    result = "\n".join(output)
+                set_cached_text(cache_key, result)
+                return result
+            except Exception as e:
+                last_error = e
+                if attempt < retries:
+                    time.sleep(1)
+                    continue
+                break
 
     # Detect language based on query text
     def detect_language(text: str) -> str:
         """Detect language and return appropriate DuckDuckGo region code."""
-        # Language code to DuckDuckGo region mapping
         LANG_TO_REGION = {
-            "uk": "ua-uk",  # Ukrainian
-            "ru": "ru-ru",  # Russian
-            "en": "us-en",  # English
-            "de": "de-de",  # German
-            "fr": "fr-fr",  # French
-            "es": "es-es",  # Spanish
-            "it": "it-it",  # Italian
-            "pt": "pt-br",  # Portuguese
-            "pl": "pl-pl",  # Polish
-            "nl": "nl-nl",  # Dutch
-            "ja": "jp-jp",  # Japanese
-            "ko": "kr-kr",  # Korean
-            "zh-cn": "cn-zh",  # Chinese Simplified
-            "zh-tw": "tw-tzh",  # Chinese Traditional
+            "uk": "ua-uk",
+            "ru": "ru-ru",
+            "en": "us-en",
+            "de": "de-de",
+            "fr": "fr-fr",
+            "es": "es-es",
+            "it": "it-it",
+            "pt": "pt-br",
+            "pl": "pl-pl",
+            "nl": "nl-nl",
+            "ja": "jp-jp",
+            "ko": "kr-kr",
+            "zh-cn": "cn-zh",
+            "zh-tw": "tw-tzh",
         }
 
         try:
             lang = detect(text)
-            return LANG_TO_REGION.get(lang, "us-en")  # Default to US English
+            return LANG_TO_REGION.get(lang, "us-en")
         except (LangDetectException, Exception):
-            # If detection fails, default to US English
             return "us-en"
 
     # Search with DuckDuckGo
@@ -515,11 +622,14 @@ def web_search(query: str, max_results: int = 5) -> str:
             output.append(f"   URL: {link}")
             output.append(f"   {snippet}\n")
 
-        return "\n".join(output)
+        result = "\n".join(output)
+        set_cached_text(cache_key, result)
+        return result
 
     except Exception as e:
+        if last_error:
+            return f"Error performing web search: {last_error}"
         return f"Error performing web search: {str(e)}"
-
 
 # --- Git Integration Tools ---
 
@@ -677,22 +787,32 @@ def git_commit(message: str, add_all: bool = False) -> str:
 def execute_python(code: str) -> str:
     """Execute Python code in a subprocess and return the output."""
     try:
+        limits = orun_config.get_section("limits")
+        timeout = limits.get("python_timeout_seconds", 30)
+        max_chars = limits.get("python_output_limit", 12000)
         # Run Python code in a subprocess with timeout
         result = subprocess.run(
             ["python", "-c", code],
             capture_output=True,
             text=True,
-            timeout=30,  # 30 second timeout
+            timeout=timeout,
             cwd=os.getcwd(),
         )
 
         output_parts = []
 
-        if result.stdout.strip():
-            output_parts.append(f"**Output:**\n```\n{result.stdout.strip()}\n```")
+        stdout = result.stdout.strip()
+        stderr = result.stderr.strip()
+        if max_chars and len(stdout) > max_chars:
+            stdout = stdout[:max_chars] + "\n... (truncated)"
+        if max_chars and len(stderr) > max_chars:
+            stderr = stderr[:max_chars] + "\n... (truncated)"
 
-        if result.stderr.strip():
-            output_parts.append(f"**Errors:**\n```\n{result.stderr.strip()}\n```")
+        if stdout:
+            output_parts.append(f"**Output:**\n```\n{stdout}\n```")
+
+        if stderr:
+            output_parts.append(f"**Errors:**\n```\n{stderr}\n```")
 
         if result.returncode != 0:
             output_parts.append(f"**Exit code:** {result.returncode}")
@@ -712,64 +832,11 @@ def execute_python(code: str) -> str:
 
 def call_function_model(task_description: str, context: str = "") -> str:
     """
-    Call FunctionGemma model to perform tool operations.
-    This is a meta-tool that delegates to FunctionGemma which has access to all real tools.
-
-    Use this when you need to:
-    - Read/write files
-    - Run shell commands
-    - Search files or web
-    - Execute Python code
-    - Any file system or external operations
-
-    The FunctionGemma model will analyze your request and call the appropriate tools.
+    Delegate tool operations to FunctionGemma specialist model.
     """
-    # Check if FunctionGemma is available
-    try:
-        # Handle different response types (object vs dict)
-        response = ollama.list()
-        if hasattr(response, "models"):
-            models = response.models
-        elif isinstance(response, dict):
-            models = response.get("models", [])
-        else:
-            models = []
+    from orun import core as core_module
 
-        function_model_available = False
-        for model in models:
-            # Handle model item types
-            name = ""
-            if hasattr(model, "model"):
-                name = model.model
-            elif hasattr(model, "name"):
-                name = model.name
-            elif isinstance(model, dict):
-                name = model.get("model", model.get("name", ""))
-
-            if "functiongemma" in name.lower():
-                function_model_available = True
-                break
-
-        if not function_model_available:
-            return (
-                "FunctionGemma model is not available. "
-                "To enable advanced tool calling, run: ollama pull functiongemma:2b"
-            )
-    except Exception as e:
-        return f"Error checking for FunctionGemma: {str(e)}"
-
-    # Build prompt for FunctionGemma
-    full_prompt = f"Task: {task_description}"
-    if context:
-        full_prompt = f"{context}\n\n{full_prompt}"
-
-    try:
-        # This will be handled by the main execution loop
-        # For now, return a placeholder that indicates this needs special handling
-        return f"__FUNCTION_GEMMA_CALL__:{full_prompt}"
-    except Exception as e:
-        return f"Error calling FunctionGemma: {str(e)}"
-
+    return core_module.run_function_gemma_task(task_description, context)
 
 # --- Map for Execution ---
 
