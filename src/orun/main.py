@@ -23,7 +23,6 @@ SUBCOMMANDS = {
     "consensus-config",
     "export",
     "import",
-    "chat",
     "c",
     "last",
     "mcp-server",
@@ -88,7 +87,11 @@ def main():
 
     parser = build_single_shot_parser()
     args = parser.parse_args()
-    dispatch_single_shot(args, models, parser)
+
+    if args.prompt:
+        dispatch_single_shot(args, models, parser)
+    else:
+        dispatch_default_chat(args, models)
 
 
 def build_single_shot_parser() -> argparse.ArgumentParser:
@@ -225,15 +228,6 @@ def build_command_parser() -> argparse.ArgumentParser:
     import_cmd = subparsers.add_parser("import", help="Import a conversation")
     import_cmd.add_argument("file", help="JSON export file")
 
-    chat = subparsers.add_parser("chat", help="Start interactive chat session")
-    chat.add_argument("prompt", nargs="*", help="Initial prompt")
-    chat.add_argument("-m", "--model", help="Override model")
-    chat.add_argument("-i", "--images", nargs="*", type=str, help="Screenshot indices")
-    chat.add_argument("-p", "--prompt", dest="use_prompt", help="Use a specific prompt template")
-    chat.add_argument("-s", "--strategy", dest="use_strategy", help="Use a specific strategy template")
-    chat.add_argument("--yolo", action="store_true", help="Enable YOLO mode (no confirmations)")
-    chat.add_argument("--profile", dest="profile", help="Use a specific profile (system prompt)")
-
     cont = subparsers.add_parser("c", help="Continue a conversation by ID")
     cont.add_argument("id", type=int, help="Conversation ID")
     cont.add_argument("prompt", nargs="*", help="Initial prompt")
@@ -301,9 +295,6 @@ def dispatch_command(args: argparse.Namespace, models: dict) -> None:
     if args.command == "import":
         commands.cmd_import(args.file)
         return
-    if args.command == "chat":
-        dispatch_chat(args, models)
-        return
     if args.command == "c":
         dispatch_continue(args, models)
         return
@@ -353,9 +344,16 @@ def dispatch_chat(args: argparse.Namespace, models: dict) -> None:
 
     initial_prompts = profile_prompts or []
     if args.use_prompt:
-        initial_prompts.append(args.use_prompt)
+        if isinstance(args.use_prompt, list):
+            initial_prompts.extend(args.use_prompt)
+        else:
+            initial_prompts.append(args.use_prompt)
 
-    initial_strategy = args.use_strategy or profile_strategy
+    strategy_template = args.use_strategy
+    if isinstance(strategy_template, list):
+        strategy_template = strategy_template[0]
+
+    initial_strategy = strategy_template or profile_strategy
 
     app = OrunApp(
         model_name=model_name,
@@ -537,6 +535,37 @@ def dispatch_single_shot(
         model_options=model_options if model_options else None,
         quiet=args.quiet,
     )
+
+
+def dispatch_default_chat(args: argparse.Namespace, models: dict) -> None:
+    unsupported = []
+    if args.files:
+        unsupported.append("--files")
+    if args.dir:
+        unsupported.append("--dir")
+    if args.output:
+        unsupported.append("--output")
+    if args.system:
+        unsupported.append("--system")
+    if args.from_clipboard:
+        unsupported.append("--from-clipboard")
+    if args.to_clipboard:
+        unsupported.append("--to-clipboard")
+    if args.temperature is not None:
+        unsupported.append("--temperature")
+    if args.top_p is not None:
+        unsupported.append("--top-p")
+    if args.consensus:
+        unsupported.append("--consensus")
+
+    if unsupported:
+        warning_text = ", ".join(unsupported)
+        print_warning(
+            f"Chat mode ignores the following options without a prompt: {warning_text}"
+        )
+        print_warning("Add a prompt to run single-shot mode instead.")
+
+    dispatch_chat(args, models)
 
 
 if __name__ == "__main__":

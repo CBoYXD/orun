@@ -199,10 +199,10 @@ orun "Explain this" -s cot                      # Use strategy template
 orun "Analyze this" -p analyze_paper -s tot    # Use both prompt and strategy
 
 # Interactive Chat (Agent Mode)
-orun chat                  # Start interactive session
-orun chat -m coder         # Chat with specific model
-orun chat -p create_coding_project              # Start with prompt template
-orun chat -s cot                                   # Start with strategy template
+orun                      # Start interactive session
+orun -m coder             # Chat with specific model
+orun -p create_coding_project                   # Start with prompt template
+orun -s cot                                    # Start with strategy template
 
 # Management
 orun models                # List available models
@@ -422,7 +422,7 @@ orun "Create a story" -C best_of_three -o story.txt
 ### In Chat Mode
 
 ```bash
-orun chat
+orun
 > /consensus              # List available pipelines
 > /consensus code_review  # Info about using consensus (not yet implemented in TUI)
 ```
@@ -685,7 +685,7 @@ Note: YOLO mode affects only tool-based commands (shell commands, file operation
 ### Command Examples
 ```bash
 # Start chat with YOLO mode pre-enabled
-orun chat --yolo
+orun --yolo
 
 # Execute a single command without confirmation
 orun "run git status" --yolo
