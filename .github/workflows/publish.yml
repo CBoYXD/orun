@@ -1,0 +1,78 @@
+name: Publish to PyPI
+
+on:
+  workflow_dispatch:
+    inputs:
+      part:
+        description: "Version part to bump (major, minor, patch, current)"
+        required: true
+        default: "patch"
+      stage:
+        description: "Release stage (stable, alpha, beta, rc, post)"
+        required: true
+        default: "stable"
+      message:
+        description: "Release notes to include in the commit message"
+        required: true
+        default: "Automated release"
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: main
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Bump version
+        run: python scripts/version_manager.py "${{ github.event.inputs.part }}" "${{ github.event.inputs.stage }}"
+
+      - name: Sync environment
+        run: uv sync
+
+      - name: Build package
+        run: uv build
+
+      - name: Validate PyPI token availability
+        run: |
+          if [ -z "${{ secrets.PYPI_API_TOKEN }}" ]; then
+            echo "PYPI_API_TOKEN is not available. Ensure it is defined for the 'main' environment."
+            exit 1
+          fi
+
+      - name: Publish to PyPI
+        env:
+          UV_PUBLISH_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
+        run: uv publish
+
+      - name: Clean build artifacts
+        run: rm -rf dist
+
+      - name: Commit release
+        run: |
+          git add .
+          python scripts/git_commit_release.py "${{ github.event.inputs.message }}"
+
+      - name: Push changes
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: git push origin HEAD:${{ github.ref_name }}
