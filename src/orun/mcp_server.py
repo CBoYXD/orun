@@ -3,6 +3,7 @@ import json
 from typing import Any
 
 from orun import core
+from orun.mcp_plugins import get_plugins_dir, load_user_mcp_plugins
 from orun.models_config import models_config
 from orun.rich_utils import Colors, console, print_error, print_success
 
@@ -90,6 +91,15 @@ def start_mcp_server(host: str, port: int, model_alias: str | None = None, allow
     )
     if not allow_tools:
         console.print("⚠️ Tools are disabled for server requests.", style=Colors.YELLOW)
+
+    plugins = load_user_mcp_plugins(app)
+    if plugins:
+        console.print(
+            f"Loaded {len(plugins)} MCP plugin(s) from {get_plugins_dir()}",
+            style=Colors.CYAN,
+        )
+    else:
+        console.print(f"Add MCP plugins in {get_plugins_dir()} to extend the server.", style=Colors.GREY)
 
     @app.get("/health")
     async def health(request):
