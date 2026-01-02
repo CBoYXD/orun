@@ -3,7 +3,7 @@ import platform
 import subprocess
 from pathlib import Path
 
-from orun import core, db, profiles_manager, prompts_manager, tools
+from orun import core, db, mcp_server, profiles_manager, prompts_manager, tools
 from orun.consensus_config import consensus_config
 from orun.models_config import models_config
 from orun.rich_utils import (
@@ -80,6 +80,21 @@ def cmd_history(limit: int = 10):
     console.print(
         "\nUse 'orun c <id>' to continue a conversation.", style=Colors.YELLOW
     )
+
+
+def cmd_mcp_server(host: str, port: int, model: str | None, disable_tools: bool) -> None:
+    """Start the optional Robyn-based MCP server."""
+    try:
+        mcp_server.start_mcp_server(
+            host=host,
+            port=port,
+            model_alias=model,
+            allow_tools=not disable_tools,
+        )
+    except mcp_server.MissingDependencyError as exc:
+        print_error(str(exc))
+    except mcp_server.ServerStartupError as exc:
+        print_error(str(exc))
 
 
 def cmd_continue(

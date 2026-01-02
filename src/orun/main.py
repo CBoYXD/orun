@@ -26,6 +26,7 @@ SUBCOMMANDS = {
     "chat",
     "c",
     "last",
+    "mcp-server",
 }
 
 EPILOG = """
@@ -191,6 +192,22 @@ def build_command_parser() -> argparse.ArgumentParser:
     fetch = subparsers.add_parser("fetch", help="Fetch and display web content")
     fetch.add_argument("url", help="URL to fetch")
 
+    mcp_server = subparsers.add_parser("mcp-server", help="Start optional Robyn MCP server")
+    mcp_server.add_argument("--host", default="127.0.0.1", help="Host interface to bind (default: 127.0.0.1)")
+    mcp_server.add_argument(
+        "--port", type=int, default=8000, help="Port to bind the MCP server (default: 8000)"
+    )
+    mcp_server.add_argument(
+        "-m",
+        "--model",
+        help="Model alias or name to serve. Defaults to the active model if not provided.",
+    )
+    mcp_server.add_argument(
+        "--disable-tools",
+        action="store_true",
+        help="Disable tool usage for requests handled by the MCP server.",
+    )
+
     subparsers.add_parser("consensus", help="List available consensus pipelines")
     subparsers.add_parser("consensus-config", help="Configure consensus pipelines")
 
@@ -268,6 +285,9 @@ def dispatch_command(args: argparse.Namespace, models: dict) -> None:
         return
     if args.command == "fetch":
         commands.cmd_fetch(args.url)
+        return
+    if args.command == "mcp-server":
+        commands.cmd_mcp_server(args.host, args.port, args.model, args.disable_tools)
         return
     if args.command == "consensus":
         commands.cmd_consensus_list()
