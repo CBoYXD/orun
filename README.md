@@ -259,6 +259,22 @@ Expose orun through a lightweight [Robyn MCP](https://robyn.tech/documentation/e
    - `GET /health` → `{"status": "ok"}`
    - `POST /chat` with JSON `{ "prompt": "...", "system_prompt": "...", "options": { ... } }` → `{"response": "..."}`  
      Tools are enabled by default; use `--disable-tools` when starting the server to force text-only responses.
+4. User MCP plugins (optional): drop Python files into `~/.orun/mcps` that expose `register(app)` or `register_mcp(app)` and declare Robyn MCP tools/resources using the provided `app`:
+   ```python
+   # ~/.orun/mcps/echo.py
+   def register(app):
+       @app.mcp.resource("echo://{message}")
+       def echo_resource(message: str) -> str:
+           return f"Resource echo: {message}"
+
+       @app.mcp.tool()
+       def echo_tool(message: str) -> str:
+           return f"Tool echo: {message}"
+
+       @app.mcp.prompt()
+       def echo_prompt(message: str) -> str:
+           return f"Please process: {message}"
+   ```
 
 ## Requirements
 - Python 3.10+
