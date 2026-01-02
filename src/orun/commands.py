@@ -473,7 +473,7 @@ def cmd_profiles():
             )
         print_table(table)
         console.print("\n[dim]Note: 'system' profile is automatically loaded for all queries[/dim]", style=Colors.GREY)
-        console.print("\nUse: orun chat --profile <name>", style=Colors.YELLOW)
+        console.print("\nUse: orun --profile <name>", style=Colors.YELLOW)
         console.print(
             "Custom profiles: ~/.orun/data/profiles/", style=Colors.GREY
         )
