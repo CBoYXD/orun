@@ -242,6 +242,22 @@ Continue the last conversation:
 orun last
 ```
 
+### Optional Robyn MCP Server
+Expose orun through a lightweight [Robyn MCP](https://robyn.tech/documentation/en/api_reference/mcps) server for tools that prefer HTTP access.
+
+1. Install the optional dependency:
+   ```bash
+   pip install "orun-py[mcp]"
+   ```
+2. Start the server (defaults to `127.0.0.1:8000` and the active model):
+   ```bash
+   orun mcp-server --host 0.0.0.0 --port 8000 -m llama3.1
+   ```
+3. Available endpoints:
+   - `GET /health` → `{"status": "ok"}`
+   - `POST /chat` with JSON `{ "prompt": "...", "system_prompt": "...", "options": { ... } }` → `{"response": "..."}`  
+     Tools are enabled by default; use `--disable-tools` when starting the server to force text-only responses.
+
 ## Requirements
 - Python 3.10+
 - [Ollama](https://ollama.com/) running locally

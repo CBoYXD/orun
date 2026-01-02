@@ -363,6 +363,8 @@ def run_single_shot(
         if yolo:
             yolo_mode.yolo_active = False
 
+    return final_output
+
 
 def run_continue_shot(
     conversation_id: int,
