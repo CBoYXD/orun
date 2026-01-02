@@ -22,6 +22,8 @@ pip install orun-py
 ```
 
 ## Usage
+- Running **without** an immediate prompt starts interactive chat (`orun`).
+- Providing a prompt runs single-shot (`orun "your prompt"`).
 
 ### Agent & Query
 Ask a question or give a task. The AI will use tools if necessary.
@@ -34,11 +36,11 @@ orun "Read src/main.py and explain how it works"
 ### Interactive Chat
 Start a continuous session:
 ```bash
-orun chat
+orun
 ```
 Start chat with a specific model:
 ```bash
-orun chat -m coder
+orun -m coder
 ```
 
 ### Prompt & Strategy Templates
@@ -146,7 +148,7 @@ orun "Search for papers by Geoffrey Hinton and summarize his latest work"
 
 In interactive chat, use the `/arxiv` command for direct access:
 ```bash
-orun chat
+orun
 > /arxiv quantum computing
 > /arxiv 1706.03762
 > /arxiv https://arxiv.org/abs/2301.07041
@@ -165,14 +167,14 @@ Search the web or fetch specific web pages in interactive chat:
 
 **Web Search (DuckDuckGo with Language Detection):**
 ```bash
-orun chat
+orun
 > /search Python asyncio tutorials
 > /search latest news about AI
 ```
 
 **Fetch URL (via Jina AI Reader):**
 ```bash
-orun chat
+orun
 > /fetch https://example.com
 > /fetch github.com/user/repo
 ```
