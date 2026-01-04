@@ -6,7 +6,10 @@ Supports:
 - Parallel aggregation: Models run independently, then results are synthesized
 """
 
-from typing import Dict, List, Optional
+import contextlib
+import threading
+from concurrent.futures import Future, ThreadPoolExecutor, as_completed
+from typing import Dict, List, Optional, Tuple
 
 import ollama
 
@@ -292,8 +295,7 @@ def run_parallel_consensus(
     model_options: Optional[Dict],
 ) -> str:
     """
-    Execute models in parallel (sequentially for now, can optimize later),
-    then aggregate results.
+    Execute models in parallel using a thread pool, then aggregate results.
     """
     console.print(
         f"\n🌐 Starting consensus pipeline: {pipeline_name}", style=Colors.CYAN
@@ -305,87 +307,112 @@ def run_parallel_consensus(
     models_config = pipeline["models"]
     total_models = len(models_config)
 
-    # Collect responses from all models
-    responses = []
+    # Collect responses from all models in deterministic order
+    responses: List[Optional[Dict[str, str]]] = [None] * total_models
+    errors: List[Tuple[str, str]] = []
+    db_lock = threading.Lock()
 
-    for model_idx, model_config in enumerate(models_config, 1):
+    def _run_model(model_idx: int, model_config: dict) -> Dict[str, str]:
+        """
+        Run a single model execution.
+
+        Returns a dict with model output or an error string keyed by 'error'.
+        """
         model_name = model_config["name"]
         step_options = model_config.get("options", {})
 
-        # Merge with global model_options if provided
         if model_options:
             step_options = {**step_options, **model_options}
 
-        # Print model header
         console.print(
-            f"\n[Model {model_idx}/{total_models}: {model_name}]", style=Colors.MAGENTA
+            f"\n[Model {model_idx}/{total_models}: {model_name}]",
+            style=Colors.MAGENTA,
         )
 
-        # Build messages
         messages = []
         if system_prompt:
             messages.append({"role": "system", "content": system_prompt})
-
         messages.append({"role": "user", "content": user_prompt, "images": image_paths})
 
-        # Execute
         try:
             tool_defs = tools.TOOL_DEFINITIONS if tools_enabled else None
-
-            response = ollama.chat(
-                model=model_name,
-                messages=messages,
-                tools=tool_defs,
-                stream=False,
-                options=step_options,
-            )
-
-            msg = response["message"]
-            model_output = msg.get("content", "")
-
-            # Handle tool calls if present
-            if msg.get("tool_calls") and tools_enabled:
-                messages.append(msg)
-                execute_tool_calls(msg["tool_calls"], messages)
-
-                console.print(f"🤖 [{model_name}] Continuing...", style=Colors.CYAN)
-
-                follow_up = ollama.chat(
+            with db.db.connection_context():
+                response = ollama.chat(
                     model=model_name,
                     messages=messages,
-                    stream=True,
+                    tools=tool_defs,
+                    stream=False,
                     options=step_options,
                 )
 
-                model_output = handle_ollama_stream(follow_up)
-            else:
-                console.print(model_output, style=Colors.GREY)
+                msg = response["message"]
+                model_output = msg.get("content", "")
 
-            # Store response
-            responses.append({"model": model_name, "content": model_output})
+                if msg.get("tool_calls") and tools_enabled:
+                    messages.append(msg)
+                    execute_tool_calls(msg["tool_calls"], messages)
+                    console.print(
+                        f"🤖 [{model_name}] Continuing...", style=Colors.CYAN
+                    )
+                    follow_up = ollama.chat(
+                        model=model_name,
+                        messages=messages,
+                        stream=True,
+                        options=step_options,
+                    )
+                    model_output = handle_ollama_stream(follow_up)
+                else:
+                    console.print(model_output, style=Colors.GREY)
 
-            # Save to database
-            db.add_message(
-                conversation_id, "assistant", f"[{model_name}]\n{model_output}"
-            )
+                # Save to database in a thread-safe manner
+                with db_lock:
+                    db.add_message(
+                        conversation_id, "assistant", f"[{model_name}]\n{model_output}"
+                    )
 
-            # Unload model to free GPU/RAM for next model
-            unload_model(model_name)
-
-        except Exception as e:
-            error_msg = f"Error with model {model_name}: {str(e)}"
+            return {"model": model_name, "content": model_output, "index": model_idx - 1}
+        except Exception as exc:  # noqa: BLE001
+            error_msg = f"Error with model {model_name}: {str(exc)}"
             print_error(error_msg)
             console.print(
                 f"Pipeline: {pipeline_name}, Model {model_idx}/{total_models}",
                 style=Colors.RED,
             )
-            # Try to unload the model even on error
-            unload_model(model_name)
-            # Continue with other models
+            return {"model": model_name, "error": error_msg, "index": model_idx - 1}
+        finally:
+            with contextlib.suppress(Exception):
+                unload_model(model_name)
 
-    if not responses:
+    max_workers = min(total_models, 8) if total_models > 0 else 1
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures: List[Future[Dict[str, str]]] = [
+            executor.submit(_run_model, idx, model_config)
+            for idx, model_config in enumerate(models_config, 1)
+        ]
+
+        for future in as_completed(futures):
+            result = future.result()
+            model_index = result.get("index")
+            if result.get("error"):
+                errors.append((result["model"], result["error"]))
+                continue
+            if model_index is not None and model_index < len(responses):
+                responses[model_index] = {
+                    "model": result["model"],
+                    "content": result["content"],
+                }
+
+    successful_responses = [resp for resp in responses if resp]
+
+    if not successful_responses:
         print_error("No successful responses from models")
         return ""
+
+    if errors:
+        console.print(
+            f"\n⚠️  {len(errors)} model(s) failed during consensus. See logs above for details.",
+            style=Colors.YELLOW,
+        )
 
     # Aggregation
     aggregation = pipeline.get("aggregation", {})
@@ -393,7 +420,7 @@ def run_parallel_consensus(
 
     if method == "synthesis":
         return synthesize_responses(
-            responses=responses,
+            responses=successful_responses,
             aggregation=aggregation,
             conversation_id=conversation_id,
             pipeline_name=pipeline_name,
@@ -402,12 +429,12 @@ def run_parallel_consensus(
     elif method == "best_of":
         # Return all responses formatted
         console.print(
-            f"\n✓ Parallel consensus completed ({len(responses)} responses)",
+            f"\n✓ Parallel consensus completed ({len(successful_responses)} responses)",
             style=Colors.GREEN,
         )
 
         result = ""
-        for idx, resp in enumerate(responses, 1):
+        for idx, resp in enumerate(successful_responses, 1):
             result += f"\n{'=' * 60}\n"
             result += f"Response {idx} ({resp['model']}):\n"
             result += f"{'=' * 60}\n"
@@ -417,7 +444,9 @@ def run_parallel_consensus(
         return result
     else:
         print_error(f"Unknown aggregation method: {method}")
-        return responses[0]["content"] if responses else ""
+        return (
+            successful_responses[0]["content"] if successful_responses else ""
+        )
 
 
 def synthesize_responses(
