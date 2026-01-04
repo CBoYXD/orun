@@ -199,7 +199,9 @@ def run_sequential_consensus(
 
         # Execute this step
         try:
-            tool_defs = tools.TOOL_DEFINITIONS if tools_enabled else None
+            tool_defs = (
+                tools.get_tools_for_model(model_name) if tools_enabled else None
+            )
 
             # First call - might request tools
             response = ollama.chat(
@@ -330,7 +332,9 @@ def run_parallel_consensus(
 
         # Execute
         try:
-            tool_defs = tools.TOOL_DEFINITIONS if tools_enabled else None
+            tool_defs = (
+                tools.get_tools_for_model(model_name) if tools_enabled else None
+            )
 
             response = ollama.chat(
                 model=model_name,
