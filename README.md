@@ -21,6 +21,21 @@ A Python CLI Agent wrapper for Ollama. It combines chat capabilities with autono
 pip install orun-py
 ```
 
+## Development & Testing
+
+Install development dependencies and run the test suite with coverage:
+
+```bash
+pip install -e .[dev]
+pytest
+```
+
+`pytest` is configured to collect coverage for `src/orun` and show missing lines in the terminal report. To view only coverage results, you can run:
+
+```bash
+pytest --cov
+```
+
 ## Usage
 - Running **without** an immediate prompt starts interactive chat (`orun`).
 - Providing a prompt runs single-shot (`orun "your prompt"`).
