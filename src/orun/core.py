@@ -1,5 +1,6 @@
 import json
 from pathlib import Path
+from typing import Any
 
 import ollama
 
@@ -83,6 +84,88 @@ def run_function_gemma_task(task_description: str, context: str = "") -> str:
     return msg.get("content", "")
 
 
+def _get_tool_schema(func_name: str) -> dict[str, Any] | None:
+    """Return the JSON schema for a tool by name, if defined."""
+
+    for tool_def in tools.TOOL_DEFINITIONS:
+        function_def = tool_def.get("function", {})
+        if function_def.get("name") == func_name:
+            return function_def.get("parameters")
+    return None
+
+
+def _normalize_tool_arguments(
+    raw_args: Any, func_name: str
+) -> tuple[dict[str, Any] | None, str | None]:
+    """
+    Convert tool arguments to a dictionary.
+
+    Attempts to JSON-decode string payloads. If arguments are already a dict,
+    they are returned unchanged. Any other type results in an error message.
+    """
+
+    if isinstance(raw_args, dict):
+        return raw_args, None
+
+    if isinstance(raw_args, str):
+        try:
+            parsed_args = json.loads(raw_args)
+        except json.JSONDecodeError as exc:
+            return None, f"Invalid JSON arguments for tool '{func_name}': {exc}"
+
+        if isinstance(parsed_args, dict):
+            return parsed_args, None
+        return (
+            None,
+            f"Tool '{func_name}' arguments must decode to a JSON object.",
+        )
+
+    return None, f"Tool '{func_name}' arguments must be a JSON object."
+
+
+def _validate_tool_arguments(func_name: str, args: dict[str, Any]) -> str | None:
+    """
+    Validate tool arguments against the tool's declared schema.
+
+    Ensures required keys are present and values match the expected basic JSON
+    types defined in the schema. Returns an error string when validation fails.
+    """
+
+    schema = _get_tool_schema(func_name)
+    if not schema:
+        return None
+
+    required_keys = schema.get("required", [])
+    for key in required_keys:
+        if key not in args:
+            return f"Missing required argument '{key}' for tool '{func_name}'."
+
+    properties = schema.get("properties", {})
+    type_mapping: dict[str, tuple[type, ...]] = {
+        "string": (str,),
+        "integer": (int,),
+        "number": (int, float),
+        "boolean": (bool,),
+        "object": (dict,),
+        "array": (list,),
+    }
+
+    for key, value in args.items():
+        if key not in properties:
+            continue
+        expected_type = properties[key].get("type")
+        if not expected_type:
+            continue
+        python_types = type_mapping.get(expected_type)
+        if python_types and not isinstance(value, python_types):
+            return (
+                f"Invalid type for argument '{key}' on tool '{func_name}': "
+                f"expected {expected_type}."
+            )
+
+    return None
+
+
 def execute_tool_calls(tool_calls, messages):
     """Executes tool calls with user confirmation and updates messages."""
     limits = orun_config.get_section("limits")
@@ -90,14 +173,19 @@ def execute_tool_calls(tool_calls, messages):
 
     for tool in tool_calls:
         func_name = tool.function.name
-        args = tool.function.arguments
+        raw_args = tool.function.arguments
 
-        # Args can be a dict or a JSON string depending on the model/library version
-        if isinstance(args, str):
-            try:
-                args = json.loads(args)
-            except json.JSONDecodeError:
-                pass  # It might be a malformed string or actually a dict disguised
+        args, normalization_error = _normalize_tool_arguments(raw_args, func_name)
+        if normalization_error:
+            print_error(normalization_error)
+            messages.append({"role": "tool", "content": normalization_error})
+            continue
+
+        validation_error = _validate_tool_arguments(func_name, args)
+        if validation_error:
+            print_error(validation_error)
+            messages.append({"role": "tool", "content": validation_error})
+            continue
 
         # Skip displaying call_function_model - it's just a proxy to FunctionGemma
         # We show the actual tool calls from FunctionGemma instead

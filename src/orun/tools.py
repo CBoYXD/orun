@@ -1,6 +1,8 @@
 import html
+import ipaddress
 import json
 import os
+import socket
 import subprocess
 import time
 import urllib.parse
@@ -12,7 +14,10 @@ from ddgs import DDGS
 from langdetect import LangDetectException, detect
 from orun import config as orun_config, utils
 from orun.cache import get_cached_text, set_cached_text
+from orun.rich_utils import print_error, print_warning
 from orun.search_config import search_config
+
+IPAddress = ipaddress.IPv4Address | ipaddress.IPv6Address
 
 # --- Helper for HTML Parsing ---
 
@@ -209,6 +214,115 @@ class StructuredHTMLParser(HTMLParser):
 
 # --- Actual Functions ---
 
+def _resolve_host_ips(host: str) -> list[IPAddress]:
+    """
+    Resolve a hostname to a list of IP addresses.
+
+    Args:
+        host: Hostname or IP literal to resolve.
+
+    Returns:
+        List of resolved IP addresses.
+
+    Raises:
+        ValueError: If the host cannot be resolved.
+    """
+    try:
+        ip_addr = ipaddress.ip_address(host)
+        return [ip_addr]
+    except ValueError:
+        try:
+            addr_info = socket.getaddrinfo(host, None)
+        except Exception as exc:  # socket.gaierror and similar
+            raise ValueError(f"Could not resolve hostname '{host}': {exc}") from exc
+
+        addresses: list[IPAddress] = []
+        for info in addr_info:
+            try:
+                resolved_ip = ipaddress.ip_address(info[4][0])
+            except Exception:
+                continue
+            if resolved_ip not in addresses:
+                addresses.append(resolved_ip)
+        if not addresses:
+            raise ValueError(f"No valid IP addresses found for hostname '{host}'.")
+        return addresses
+
+
+def _is_private_ip(ip: IPAddress) -> bool:
+    """
+    Determine whether an IP address is private or otherwise unsafe for fetching.
+
+    Args:
+        ip: IP address to inspect.
+
+    Returns:
+        True if the address is private, loopback, link-local, multicast,
+        reserved, or unspecified.
+    """
+    return any(
+        [
+            ip.is_private,
+            ip.is_loopback,
+            ip.is_link_local,
+            ip.is_multicast,
+            ip.is_reserved,
+            ip.is_unspecified,
+        ]
+    )
+
+
+def _validate_fetch_destination(
+    host: str, limits: dict, port: str | None = None
+) -> tuple[bool, str | None]:
+    """
+    Validate whether a URL destination is allowed to be fetched.
+
+    Args:
+        host: Hostname from the URL.
+        limits: Limits configuration section.
+        port: Optional port extracted from the URL for logging context.
+
+    Returns:
+        Tuple of (allowed, error_message). error_message is None when allowed is True.
+    """
+    allow_hosts = {h.lower() for h in limits.get("fetch_allow_hosts", []) if h}
+    block_hosts = {h.lower() for h in limits.get("fetch_block_hosts", []) if h}
+    block_private_networks = limits.get("fetch_block_private_networks", True)
+
+    host_key = host.lower()
+    if allow_hosts and host_key not in allow_hosts:
+        return (
+            False,
+            f"Host '{host}'{f':{port}' if port else ''} is not in the configured fetch allowlist.",
+        )
+
+    if host_key in block_hosts:
+        return (
+            False,
+            f"Host '{host}'{f':{port}' if port else ''} is blocked by configuration.",
+        )
+
+    try:
+        resolved_ips = _resolve_host_ips(host)
+    except ValueError as exc:
+        return False, str(exc)
+
+    for ip_addr in resolved_ips:
+        ip_key = str(ip_addr).lower()
+        if ip_key in block_hosts:
+            return (
+                False,
+                f"IP '{ip_addr}'{f':{port}' if port else ''} is blocked by configuration.",
+            )
+        if block_private_networks and _is_private_ip(ip_addr):
+            return (
+                False,
+                f"Access to host '{host}' is blocked because it resolves to a private or local network address ({ip_addr}).",
+            )
+
+    return True, None
+
 
 def read_file(file_path: str) -> str:
     """Reads the content of a file."""
@@ -339,23 +453,189 @@ def fetch_url(url: str) -> str:
     normalized = url.strip()
     if not normalized:
         return "Error: URL is empty."
-    if not normalized.startswith(("http://", "https://")):
+
+    def _validation_error(message: str) -> str:
+        return f"Error: {message}"
+
+    def _ip_block_reason(
+        address: ipaddress.IPv4Address | ipaddress.IPv6Address,
+    ) -> str | None:
+        """Return the reason an IP address should be blocked, if any."""
+
+        if address.is_loopback or address.is_unspecified:
+            return "loopback or unspecified address"
+        if address.is_private:
+            return "private network"
+        if address.is_reserved:
+            return "reserved network"
+        if address.is_multicast:
+            return "multicast address"
+        if address.is_link_local:
+            return "link-local address"
+        return None
+
+    def _blocked_hostname_reason(hostname: str) -> str | None:
+        """Determine if the hostname targets a restricted network."""
+
+        lowered = hostname.lower()
+        if lowered in {"localhost", "ip6-localhost"} or lowered.endswith(
+            ".localhost"
+        ):
+            return "localhost hostnames are not allowed"
+
+        try:
+            ip_addr = ipaddress.ip_address(hostname)
+            ip_reason = _ip_block_reason(ip_addr)
+            if ip_reason:
+                return f"host resolves to a {ip_reason}: {hostname}"
+        except ValueError:
+            pass
+
+        try:
+            infos = socket.getaddrinfo(hostname, None)
+        except Exception:
+            return None
+
+        for info in infos:
+            try:
+                candidate_ip = ipaddress.ip_address(info[4][0])
+            except ValueError:
+                continue
+            ip_reason = _ip_block_reason(candidate_ip)
+            if ip_reason:
+                return f"host resolves to a {ip_reason}: {candidate_ip}"
+
+        return None
+
+    parsed = urllib.parse.urlparse(normalized)
+    if not parsed.scheme:
         normalized = f"https://{normalized}"
+        parsed = urllib.parse.urlparse(normalized)
+
+    if parsed.scheme not in {"http", "https"}:
+        return _validation_error("Only http and https URLs are allowed.")
+
+    if not parsed.hostname:
+        return _validation_error("URL must include a hostname.")
+
+    blocked_reason = _blocked_hostname_reason(parsed.hostname)
+    if blocked_reason:
+        return _validation_error(
+            f"Access to host '{parsed.hostname}' is blocked ({blocked_reason})."
+        )
+
+    if parsed.scheme not in {"http", "https"}:
+        message = "Error: Unsupported URL scheme. Only http and https are allowed."
+        print_error(message)
+        return message
+
+    if not parsed.hostname:
+        message = "Error: URL is missing a hostname."
+        print_error(message)
+        return message
+
+    limits = orun_config.get_section("limits")
+    timeout = limits.get("fetch_timeout_seconds", 20)
+    max_chars = limits.get("fetch_max_chars", 15000)
+    max_bytes = max_chars if max_chars else None
+    retries = limits.get("fetch_retry_count", 1)
+
+    allowed, validation_error = _validate_fetch_destination(
+        parsed.hostname,
+        limits,
+        str(parsed.port) if parsed.port else None,
+    )
+    if not allowed:
+        print_warning(validation_error)
+        return f"Error: {validation_error}"
 
     cache_key = f"fetch_url:{normalized}"
     cached = get_cached_text(cache_key)
     if cached:
         return cached
 
-    limits = orun_config.get_section("limits")
-    timeout = limits.get("fetch_timeout_seconds", 20)
-    max_chars = limits.get("fetch_max_chars", 15000)
-    retries = limits.get("fetch_retry_count", 1)
-
     def _truncate(text: str) -> str:
         if max_chars and len(text) > max_chars:
             return text[:max_chars] + "\n... (content truncated)"
         return text
+
+    def _size_error(length: int | None) -> str:
+        cap_description = f"{max_chars} bytes" if max_chars else "configured limit"
+        if length is None:
+            return _validation_error(
+                f"Response size exceeded maximum allowed ({cap_description})."
+            )
+        return _validation_error(
+            f"Response too large ({length} bytes exceeds limit of {cap_description})."
+        )
+
+    def _check_content_length(preflight_url: str, headers: dict[str, str]) -> str | None:
+        """Use a HEAD request to block obviously oversized responses."""
+
+        if not max_bytes:
+            return None
+        try:
+            head_request = urllib.request.Request(
+                preflight_url, headers=headers, method="HEAD"
+            )
+            with urllib.request.urlopen(head_request, timeout=timeout) as head_response:
+                length_header = head_response.headers.get("Content-Length")
+                if length_header is None:
+                    return None
+                try:
+                    length_value = int(length_header)
+                except ValueError:
+                    return None
+                if length_value > max_bytes:
+                    return _size_error(length_value)
+        except Exception:
+            return None
+
+        return None
+
+    def _read_response_body(response) -> tuple[bytes, str | None, str]:
+        """Read a response body with a hard byte cap."""
+
+        encoding = response.headers.get_content_charset() or "utf-8"
+        if max_bytes:
+            header_length = response.headers.get("Content-Length")
+            if header_length:
+                try:
+                    parsed_length = int(header_length)
+                    if parsed_length > max_bytes:
+                        return b"", _size_error(parsed_length), encoding
+                except ValueError:
+                    pass
+
+        buffer = bytearray()
+        chunk_size = 8192
+        while True:
+            to_read = min(chunk_size, max_bytes - len(buffer)) if max_bytes else chunk_size
+            next_chunk = response.read(to_read)
+            if not next_chunk:
+                break
+            buffer.extend(next_chunk)
+
+            if max_bytes and len(buffer) >= max_bytes:
+                # If additional data remains, treat this as exceeding the cap
+                extra = response.read(1)
+                if extra:
+                    return bytes(buffer[:max_bytes]), _size_error(None), encoding
+                buffer = buffer[:max_bytes]
+                return bytes(buffer), _size_error(None), encoding
+            next_chunk = response.read(
+                min(chunk_size, max_bytes - len(buffer)) if max_bytes else chunk_size
+            )
+            if not next_chunk:
+                break
+            buffer.extend(next_chunk)
+            if max_bytes and len(buffer) > max_bytes:
+                return bytes(buffer[:max_bytes]), _size_error(None), encoding
+
+        return bytes(buffer), None, encoding
+
+    def _decode_body(body: bytes, encoding: str) -> str:
+        return body.decode(encoding, errors="ignore")
 
     # Try Jina AI Reader first (optimized for LLM, returns clean markdown)
     for attempt in range(retries + 1):
@@ -365,10 +645,18 @@ def fetch_url(url: str) -> str:
                 "User-Agent": "Mozilla/5.0 (compatible; orun/1.0)",
                 "X-Return-Format": "markdown",
             }
-            req = urllib.request.Request(jina_url, headers=headers)
 
+            length_error = _check_content_length(jina_url, headers)
+            if length_error:
+                return length_error
+
+            req = urllib.request.Request(jina_url, headers=headers)
             with urllib.request.urlopen(req, timeout=timeout) as response:
-                content = response.read().decode("utf-8", errors="ignore")
+                body, size_error, encoding = _read_response_body(response)
+                if size_error:
+                    return size_error
+
+                content = _decode_body(body, encoding)
 
                 if content and len(content) > 50:
                     content = _truncate(content)
@@ -386,10 +674,16 @@ def fetch_url(url: str) -> str:
     for attempt in range(retries + 1):
         try:
             headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
+            length_error = _check_content_length(normalized, headers)
+            if length_error:
+                return length_error
+
             req = urllib.request.Request(normalized, headers=headers)
             with urllib.request.urlopen(req, timeout=timeout) as response:
-                charset = response.headers.get_content_charset() or "utf-8"
-                html_content = response.read().decode(charset, errors="ignore")
+                body, size_error, encoding = _read_response_body(response)
+                if size_error:
+                    return size_error
+                html_content = _decode_body(body, encoding)
             break
         except Exception as e:
             if attempt < retries:
@@ -414,6 +708,7 @@ def fetch_url(url: str) -> str:
     result = f"{header}{text}\n\nSource: {normalized}".strip()
     set_cached_text(cache_key, result)
     return result
+
 
 def search_arxiv(query: str, max_results: int = 5) -> str:
     """Search for papers on arXiv by query string."""
