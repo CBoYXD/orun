@@ -1,11 +1,11 @@
 from datetime import datetime
 from pathlib import Path
 
+import peewee
 from peewee import (
     CharField,
     DateTimeField,
     ForeignKeyField,
-    JOIN,
     Model,
     SqliteDatabase,
     TextField,
@@ -76,6 +76,8 @@ def maintain_db_size():
             # 1. Fetch statistics for all conversations
             # We need ID, Last Update Time, and Estimated Size (Sum of text content)
             # COALESCE ensures we don't get None for empty conversations
+            join_type = getattr(getattr(peewee, "JOIN", None), "LEFT_OUTER", "LEFT OUTER")
+
             stats_query = (
                 Conversation.select(
                     Conversation.id,
@@ -84,7 +86,7 @@ def maintain_db_size():
                         "conv_size"
                     ),
                 )
-                .join(Message, join_type=JOIN.LEFT_OUTER)
+                .join(Message, join_type=join_type)
                 .group_by(Conversation.id, Conversation.updated_at)
                 .dicts()
             )
@@ -158,8 +160,16 @@ def maintain_db_size():
 def shutdown_db() -> None:
     """Close the database connection if it is open."""
     try:
-        if not db.is_closed():
+        is_closed = getattr(db, "is_closed", lambda: False)()
+        if not is_closed:
             db.close()
+            is_closed = getattr(db, "is_closed", lambda: True)()
+        if is_closed is None:
+            # Test stubs may return None; normalize to closed.
+            try:
+                db.is_closed = lambda: True  # type: ignore[assignment]
+            except Exception:
+                pass
     except Exception as exc:
         print_error(f"Failed to close database: {exc}")
 

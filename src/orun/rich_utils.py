@@ -27,6 +27,10 @@ if sys.platform == "win32":
 else:
     console = Console(stderr=True)
 
+# Some test environments provide lightweight console stubs without input().
+if not hasattr(console, "input"):
+    console.input = lambda prompt="": Prompt.ask(prompt)  # type: ignore[attr-defined]
+
 
 class Colors:
     """Color constants for Rich."""

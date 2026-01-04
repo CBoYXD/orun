@@ -9,6 +9,8 @@ from pathlib import Path
 from unittest import TestCase
 from unittest.mock import patch
 
+import pytest
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 if "arxiv" not in sys.modules:
@@ -60,34 +62,33 @@ if "PIL.Image" not in sys.modules:
 if "PIL.ImageGrab" not in sys.modules:
     sys.modules["PIL.ImageGrab"] = types.ModuleType("PIL.ImageGrab")
 
-if "orun.rich_utils" not in sys.modules:
-    rich_utils_module = types.ModuleType("orun.rich_utils")
+rich_utils_module = types.ModuleType("orun.rich_utils")
 
-    class _StubColors:
-        RED = "red"
-        GREEN = "green"
-        YELLOW = "yellow"
-        CYAN = "cyan"
-        GREY = "grey"
-        DIM = "dim"
+class _StubColors:
+    RED = "red"
+    GREEN = "green"
+    YELLOW = "yellow"
+    CYAN = "cyan"
+    GREY = "grey"
+    DIM = "dim"
 
-    class _StubConsole:
-        def print(self, *args, **kwargs):
-            return ""
-
-        def input(self, *args, **kwargs):
-            return ""
-
-    def _noop(*args, **kwargs):
+class _StubConsole:
+    def print(self, *args, **kwargs):
         return ""
 
-    rich_utils_module.console = _StubConsole()
-    rich_utils_module.Colors = _StubColors
-    rich_utils_module.print_error = _noop
-    rich_utils_module.print_success = _noop
-    rich_utils_module.print_warning = _noop
-    rich_utils_module.print_info = _noop
-    sys.modules["orun.rich_utils"] = rich_utils_module
+    def input(self, *args, **kwargs):
+        return ""
+
+def _noop(*args, **kwargs):
+    return ""
+
+rich_utils_module.console = _StubConsole()
+rich_utils_module.Colors = _StubColors
+rich_utils_module.print_error = _noop
+rich_utils_module.print_success = _noop
+rich_utils_module.print_warning = _noop
+rich_utils_module.print_info = _noop
+sys.modules["orun.rich_utils"] = rich_utils_module
 
 if "rich" not in sys.modules:
     rich_package = types.ModuleType("rich")
@@ -127,6 +128,22 @@ if "rich.console" not in sys.modules:
 
     console_module.Console = _Console
     sys.modules["rich.console"] = console_module
+    rich_utils_module.print_error = lambda *args, **kwargs: ""
+    rich_utils_module.print_warning = lambda *args, **kwargs: ""
+
+
+@pytest.fixture(autouse=True)
+def _reload_tools_module():
+    """Ensure the real tools module (with DDGS attribute) is available for HTTP tests."""
+    import importlib
+
+    sys.modules["orun.rich_utils"] = rich_utils_module
+    sys.modules.pop("orun.tools", None)
+    module = importlib.import_module("orun.tools")
+    if not hasattr(module, "DDGS"):
+        module.DDGS = object  # type: ignore[attr-defined]
+    globals()["tools"] = module
+    return module
 
 from orun import tools  # noqa: E402
 from orun.http_client import HttpResponse  # noqa: E402

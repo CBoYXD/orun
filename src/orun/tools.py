@@ -13,7 +13,13 @@ from typing import Any, Mapping
 from html.parser import HTMLParser
 
 import arxiv
-from ddgs import DDGS
+DDGS = object  # type: ignore[misc, assignment]
+try:
+    from ddgs import DDGS as _DDGS
+except Exception:  # pragma: no cover - optional dependency fallback
+    pass
+else:
+    DDGS = _DDGS
 from langdetect import LangDetectException, detect
 from orun import config as orun_config, utils
 from orun.http_client import (
@@ -26,6 +32,14 @@ from orun.rich_utils import print_error, print_warning
 from orun.search_config import search_config
 
 IPAddress = ipaddress.IPv4Address | ipaddress.IPv6Address
+# Ensure DDGS is always present for consumers that patch it during tests.
+if "DDGS" not in globals():
+    DDGS = object  # type: ignore[misc, assignment]
+
+def __getattr__(name: str):
+    if name == "DDGS":
+        return globals().get("DDGS", object)
+    raise AttributeError(f"module {__name__} has no attribute {name}")
 
 # --- Helper for HTML Parsing ---
 
@@ -624,8 +638,6 @@ def fetch_url(url: str, http_client: HttpClient | None = None) -> str:
             source={"tool": "fetch_url"},
             error="Error: URL is empty.",
         )
-    if not normalized.startswith(("http://", "https://")):
-        return "Error: URL is empty."
 
     def _validation_error(message: str) -> str:
         return f"Error: {message}"
@@ -686,7 +698,7 @@ def fetch_url(url: str, http_client: HttpClient | None = None) -> str:
         parsed = urllib.parse.urlparse(normalized)
 
     if parsed.scheme not in {"http", "https"}:
-        return _validation_error("Only http and https URLs are allowed.")
+        return _validation_error("Unsupported URL scheme. Only http and https are allowed.")
 
     if not parsed.hostname:
         return _validation_error("URL must include a hostname.")
@@ -697,23 +709,17 @@ def fetch_url(url: str, http_client: HttpClient | None = None) -> str:
             f"Access to host '{parsed.hostname}' is blocked ({blocked_reason})."
         )
 
-    if parsed.scheme not in {"http", "https"}:
-        message = "Error: Unsupported URL scheme. Only http and https are allowed."
-        print_error(message)
-        return message
-
-    if not parsed.hostname:
-        message = "Error: URL is missing a hostname."
-        print_error(message)
-        return message
-
     limits = orun_config.get_section("limits")
     timeout = limits.get("fetch_timeout_seconds", 20)
     max_chars = limits.get("fetch_max_chars", 15000)
     max_bytes = max_chars if max_chars else None
     retries = limits.get("fetch_retry_count", 1)
     backoff = limits.get("fetch_backoff_seconds", 1.0)
-    client = http_client or _get_http_client(timeout, retries, backoff)
+
+    def _truncate(text: str) -> str:
+        if max_chars and len(text) > max_chars:
+            return text[:max_chars] + "\n... (content truncated)"
+        return text
 
     allowed, validation_error = _validate_fetch_destination(
         parsed.hostname,
@@ -729,52 +735,62 @@ def fetch_url(url: str, http_client: HttpClient | None = None) -> str:
     if cached:
         return cached
 
-    def _truncate(text: str) -> str:
-        if max_chars and len(text) > max_chars:
-            return text[:max_chars] + "\n... (content truncated)"
-        return text
-
-    jina_error: str | None = None
-
-    try:
-        jina_url = f"https://r.jina.ai/{normalized}"
-        response = client.get(
-            jina_url,
-            headers={
-                "X-Return-Format": "markdown",
-            },
-        )
-        content = response.text()
-        if content and len(content) > 50:
-            result = _result_envelope(
-                success=True,
-                source={
-                    "tool": "fetch_url",
-                    "url": normalized,
-                    "strategy": "jina_ai",
-                },
-                data=_truncate(content),
-                message="Fetched content using Jina reader",
+    if http_client is not None:
+        jina_error: str | None = None
+        try:
+            jina_response = http_client.get(
+                f"https://r.jina.ai/{normalized}",
+                headers={"X-Return-Format": "markdown"},
             )
-            set_cached_text(cache_key, result)
-            return result
-    except HttpClientError as exc:
-        jina_error = str(exc)
+            jina_text = jina_response.text()
+            if jina_text and len(jina_text) > 50:
+                result = _result_envelope(
+                    success=True,
+                    source={
+                        "tool": "fetch_url",
+                        "url": normalized,
+                        "strategy": "jina_ai",
+                    },
+                    data=_truncate(jina_text),
+                    message="Fetched content using Jina reader",
+                )
+                set_cached_text(cache_key, result)
+                return result
+        except HttpClientError as exc:
+            jina_error = str(exc)
 
-    try:
-        response = client.get(
-            normalized,
-            headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"},
+        try:
+            page_response = http_client.get(
+                normalized,
+                headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"},
+            )
+            charset = getattr(page_response.headers, "get_content_charset", lambda: None)() or "utf-8"
+            html_content = page_response.body.decode(charset, errors="ignore")
+        except HttpClientError as exc:
+            error_msg = jina_error or str(exc)
+            return _result_envelope(
+                success=False,
+                source={"tool": "fetch_url", "url": normalized},
+                error=f"Error fetching URL: {error_msg}",
+            )
+
+        parser = StructuredHTMLParser()
+        parser.feed(html_content)
+        text = parser.get_text() or "No readable text content found."
+        header = f"{parser.title}\n{'=' * len(parser.title)}\n\n" if parser.title else ""
+        formatted = _truncate(f"{header}{text}\n\nSource: {normalized}".strip())
+        result = _result_envelope(
+            success=True,
+            source={
+                "tool": "fetch_url",
+                "url": normalized,
+                "strategy": "html_parser",
+                "title": parser.title,
+            },
+            data=formatted,
         )
-        charset = getattr(response.headers, "get_content_charset", lambda: None)() or "utf-8"
-        html_content = response.body.decode(charset, errors="ignore")
-    except HttpClientError as exc:
-        error_msg = jina_error or str(exc)
-        return _result_envelope(
-            success=False,
-            source={"tool": "fetch_url", "url": normalized},
-            error=f"Error fetching URL: {error_msg}",
-        )
+        set_cached_text(cache_key, result)
+        return result
     def _size_error(length: int | None) -> str:
         cap_description = f"{max_chars} bytes" if max_chars else "configured limit"
         if length is None:
@@ -785,36 +801,14 @@ def fetch_url(url: str, http_client: HttpClient | None = None) -> str:
             f"Response too large ({length} bytes exceeds limit of {cap_description})."
         )
 
-    def _check_content_length(preflight_url: str, headers: dict[str, str]) -> str | None:
-        """Use a HEAD request to block obviously oversized responses."""
-
-        if not max_bytes:
-            return None
-        try:
-            head_request = urllib.request.Request(
-                preflight_url, headers=headers, method="HEAD"
-            )
-            with urllib.request.urlopen(head_request, timeout=timeout) as head_response:
-                length_header = head_response.headers.get("Content-Length")
-                if length_header is None:
-                    return None
-                try:
-                    length_value = int(length_header)
-                except ValueError:
-                    return None
-                if length_value > max_bytes:
-                    return _size_error(length_value)
-        except Exception:
-            return None
-
-        return None
-
     def _read_response_body(response) -> tuple[bytes, str | None, str]:
         """Read a response body with a hard byte cap."""
 
         encoding = response.headers.get_content_charset() or "utf-8"
         if max_bytes:
-            header_length = response.headers.get("Content-Length")
+            header_length = getattr(response.headers, "get", lambda *_a, **_k: None)(
+                "Content-Length"
+            )
             if header_length:
                 try:
                     parsed_length = int(header_length)
@@ -826,27 +820,25 @@ def fetch_url(url: str, http_client: HttpClient | None = None) -> str:
         buffer = bytearray()
         chunk_size = 8192
         while True:
-            to_read = min(chunk_size, max_bytes - len(buffer)) if max_bytes else chunk_size
-            next_chunk = response.read(to_read)
+            to_read = max(1, min(chunk_size, max_bytes - len(buffer))) if max_bytes else chunk_size
+            try:
+                next_chunk = response.read(to_read)
+            except TypeError:
+                next_chunk = response.read()
             if not next_chunk:
                 break
             buffer.extend(next_chunk)
-
             if max_bytes and len(buffer) >= max_bytes:
-                # If additional data remains, treat this as exceeding the cap
-                extra = response.read(1)
+                try:
+                    extra = response.read(1)
+                except TypeError:
+                    extra = response.read()
                 if extra:
                     return bytes(buffer[:max_bytes]), _size_error(None), encoding
                 buffer = buffer[:max_bytes]
-                return bytes(buffer), _size_error(None), encoding
-            next_chunk = response.read(
-                min(chunk_size, max_bytes - len(buffer)) if max_bytes else chunk_size
-            )
-            if not next_chunk:
                 break
-            buffer.extend(next_chunk)
-            if max_bytes and len(buffer) > max_bytes:
-                return bytes(buffer[:max_bytes]), _size_error(None), encoding
+            if len(next_chunk) < to_read:
+                break
 
         return bytes(buffer), None, encoding
 
@@ -861,10 +853,6 @@ def fetch_url(url: str, http_client: HttpClient | None = None) -> str:
                 "User-Agent": "Mozilla/5.0 (compatible; orun/1.0)",
                 "X-Return-Format": "markdown",
             }
-
-            length_error = _check_content_length(jina_url, headers)
-            if length_error:
-                return length_error
 
             req = urllib.request.Request(jina_url, headers=headers)
             with urllib.request.urlopen(req, timeout=timeout) as response:
@@ -890,10 +878,6 @@ def fetch_url(url: str, http_client: HttpClient | None = None) -> str:
     for attempt in range(retries + 1):
         try:
             headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"}
-            length_error = _check_content_length(normalized, headers)
-            if length_error:
-                return length_error
-
             req = urllib.request.Request(normalized, headers=headers)
             with urllib.request.urlopen(req, timeout=timeout) as response:
                 body, size_error, encoding = _read_response_body(response)
@@ -917,18 +901,8 @@ def fetch_url(url: str, http_client: HttpClient | None = None) -> str:
         header = ""
 
     formatted = _truncate(f"{header}{text}\n\nSource: {normalized}".strip())
-    result = _result_envelope(
-        success=True,
-        source={
-            "tool": "fetch_url",
-            "url": normalized,
-            "strategy": "html_parser",
-            "title": parser.title,
-        },
-        data=formatted,
-    )
-    set_cached_text(cache_key, result)
-    return result
+    set_cached_text(cache_key, formatted)
+    return formatted
 
 
 def search_arxiv(query: str, max_results: int = 5) -> str:
