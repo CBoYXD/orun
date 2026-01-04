@@ -77,21 +77,24 @@ def main():
 
     db.initialize()
 
-    models = models_config.get_models()
+    try:
+        models = models_config.get_models()
 
-    if len(sys.argv) > 1 and sys.argv[1] in SUBCOMMANDS:
-        parser = build_command_parser()
+        if len(sys.argv) > 1 and sys.argv[1] in SUBCOMMANDS:
+            parser = build_command_parser()
+            args = parser.parse_args()
+            dispatch_command(args, models)
+            return
+
+        parser = build_single_shot_parser()
         args = parser.parse_args()
-        dispatch_command(args, models)
-        return
 
-    parser = build_single_shot_parser()
-    args = parser.parse_args()
-
-    if args.prompt:
-        dispatch_single_shot(args, models, parser)
-    else:
-        dispatch_default_chat(args, models)
+        if args.prompt:
+            dispatch_single_shot(args, models, parser)
+        else:
+            dispatch_default_chat(args, models)
+    finally:
+        db.shutdown_db()
 
 
 def build_single_shot_parser() -> argparse.ArgumentParser:
