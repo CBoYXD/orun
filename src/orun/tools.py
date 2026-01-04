@@ -1,6 +1,8 @@
 import html
+import ipaddress
 import json
 import os
+import socket
 import subprocess
 import time
 import urllib.parse
@@ -12,7 +14,10 @@ from ddgs import DDGS
 from langdetect import LangDetectException, detect
 from orun import config as orun_config, utils
 from orun.cache import get_cached_text, set_cached_text
+from orun.rich_utils import print_error, print_warning
 from orun.search_config import search_config
+
+IPAddress = ipaddress.IPv4Address | ipaddress.IPv6Address
 
 # --- Helper for HTML Parsing ---
 
@@ -209,6 +214,115 @@ class StructuredHTMLParser(HTMLParser):
 
 # --- Actual Functions ---
 
+def _resolve_host_ips(host: str) -> list[IPAddress]:
+    """
+    Resolve a hostname to a list of IP addresses.
+
+    Args:
+        host: Hostname or IP literal to resolve.
+
+    Returns:
+        List of resolved IP addresses.
+
+    Raises:
+        ValueError: If the host cannot be resolved.
+    """
+    try:
+        ip_addr = ipaddress.ip_address(host)
+        return [ip_addr]
+    except ValueError:
+        try:
+            addr_info = socket.getaddrinfo(host, None)
+        except Exception as exc:  # socket.gaierror and similar
+            raise ValueError(f"Could not resolve hostname '{host}': {exc}") from exc
+
+        addresses: list[IPAddress] = []
+        for info in addr_info:
+            try:
+                resolved_ip = ipaddress.ip_address(info[4][0])
+            except Exception:
+                continue
+            if resolved_ip not in addresses:
+                addresses.append(resolved_ip)
+        if not addresses:
+            raise ValueError(f"No valid IP addresses found for hostname '{host}'.")
+        return addresses
+
+
+def _is_private_ip(ip: IPAddress) -> bool:
+    """
+    Determine whether an IP address is private or otherwise unsafe for fetching.
+
+    Args:
+        ip: IP address to inspect.
+
+    Returns:
+        True if the address is private, loopback, link-local, multicast,
+        reserved, or unspecified.
+    """
+    return any(
+        [
+            ip.is_private,
+            ip.is_loopback,
+            ip.is_link_local,
+            ip.is_multicast,
+            ip.is_reserved,
+            ip.is_unspecified,
+        ]
+    )
+
+
+def _validate_fetch_destination(
+    host: str, limits: dict, port: str | None = None
+) -> tuple[bool, str | None]:
+    """
+    Validate whether a URL destination is allowed to be fetched.
+
+    Args:
+        host: Hostname from the URL.
+        limits: Limits configuration section.
+        port: Optional port extracted from the URL for logging context.
+
+    Returns:
+        Tuple of (allowed, error_message). error_message is None when allowed is True.
+    """
+    allow_hosts = {h.lower() for h in limits.get("fetch_allow_hosts", []) if h}
+    block_hosts = {h.lower() for h in limits.get("fetch_block_hosts", []) if h}
+    block_private_networks = limits.get("fetch_block_private_networks", True)
+
+    host_key = host.lower()
+    if allow_hosts and host_key not in allow_hosts:
+        return (
+            False,
+            f"Host '{host}'{f':{port}' if port else ''} is not in the configured fetch allowlist.",
+        )
+
+    if host_key in block_hosts:
+        return (
+            False,
+            f"Host '{host}'{f':{port}' if port else ''} is blocked by configuration.",
+        )
+
+    try:
+        resolved_ips = _resolve_host_ips(host)
+    except ValueError as exc:
+        return False, str(exc)
+
+    for ip_addr in resolved_ips:
+        ip_key = str(ip_addr).lower()
+        if ip_key in block_hosts:
+            return (
+                False,
+                f"IP '{ip_addr}'{f':{port}' if port else ''} is blocked by configuration.",
+            )
+        if block_private_networks and _is_private_ip(ip_addr):
+            return (
+                False,
+                f"Access to host '{host}' is blocked because it resolves to a private or local network address ({ip_addr}).",
+            )
+
+    return True, None
+
 
 def read_file(file_path: str) -> str:
     """Reads the content of a file."""
@@ -339,18 +453,40 @@ def fetch_url(url: str) -> str:
     normalized = url.strip()
     if not normalized:
         return "Error: URL is empty."
-    if not normalized.startswith(("http://", "https://")):
-        normalized = f"https://{normalized}"
 
-    cache_key = f"fetch_url:{normalized}"
-    cached = get_cached_text(cache_key)
-    if cached:
-        return cached
+    parsed = urllib.parse.urlparse(normalized)
+    if not parsed.scheme:
+        normalized = f"https://{normalized}"
+        parsed = urllib.parse.urlparse(normalized)
+
+    if parsed.scheme not in {"http", "https"}:
+        message = "Error: Unsupported URL scheme. Only http and https are allowed."
+        print_error(message)
+        return message
+
+    if not parsed.hostname:
+        message = "Error: URL is missing a hostname."
+        print_error(message)
+        return message
 
     limits = orun_config.get_section("limits")
     timeout = limits.get("fetch_timeout_seconds", 20)
     max_chars = limits.get("fetch_max_chars", 15000)
     retries = limits.get("fetch_retry_count", 1)
+
+    allowed, validation_error = _validate_fetch_destination(
+        parsed.hostname,
+        limits,
+        str(parsed.port) if parsed.port else None,
+    )
+    if not allowed:
+        print_warning(validation_error)
+        return f"Error: {validation_error}"
+
+    cache_key = f"fetch_url:{normalized}"
+    cached = get_cached_text(cache_key)
+    if cached:
+        return cached
 
     def _truncate(text: str) -> str:
         if max_chars and len(text) > max_chars:
@@ -414,6 +550,7 @@ def fetch_url(url: str) -> str:
     result = f"{header}{text}\n\nSource: {normalized}".strip()
     set_cached_text(cache_key, result)
     return result
+
 
 def search_arxiv(query: str, max_results: int = 5) -> str:
     """Search for papers on arXiv by query string."""
