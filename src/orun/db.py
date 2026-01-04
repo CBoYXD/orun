@@ -5,6 +5,7 @@ from peewee import (
     CharField,
     DateTimeField,
     ForeignKeyField,
+    JOIN,
     Model,
     SqliteDatabase,
     TextField,
@@ -83,8 +84,8 @@ def maintain_db_size():
                         "conv_size"
                     ),
                 )
-                .join(Message, on=(Conversation.id == Message.conversation))
-                .group_by(Conversation.id)
+                .join(Message, join_type=JOIN.LEFT_OUTER)
+                .group_by(Conversation.id, Conversation.updated_at)
                 .dicts()
             )
 
@@ -94,10 +95,11 @@ def maintain_db_size():
 
             for row in stats_query:
                 c_id = row["id"]
-                c_size = row["conv_size"]
+                c_size = row["conv_size"] or 0
+                cleanup_size = max(c_size, 1)
                 c_updated = row["updated_at"]
 
-                total_tracked_size += c_size
+                total_tracked_size += cleanup_size
 
                 # Calculate Age in Days (float)
                 # Ensure a minimum age factor of 0.1 days to avoid zeroing out new heavy queries completely,
@@ -110,12 +112,16 @@ def maintain_db_size():
                 # Large, Old files have massive scores.
                 # Small, Old files have medium scores.
                 # Large, New files have low scores.
-                score = age_days * c_size
+                score = age_days * cleanup_size
 
-                candidates.append({"id": c_id, "size": c_size, "score": score})
-
-            if total_tracked_size == 0:
-                return
+                candidates.append(
+                    {
+                        "id": c_id,
+                        "size": c_size,
+                        "score": score,
+                        "cleanup_size": cleanup_size,
+                    }
+                )
 
             # Target: Free up configured percentage of the text volume
             target_reduction = total_tracked_size * cleanup_fraction
@@ -131,7 +137,7 @@ def maintain_db_size():
                     break
 
                 ids_to_delete.append(c["id"])
-                accumulated_size += c["size"]
+                accumulated_size += c["cleanup_size"]
 
             if ids_to_delete:
                 q = Conversation.delete().where(Conversation.id.in_(ids_to_delete))
