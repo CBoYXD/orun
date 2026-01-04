@@ -149,6 +149,15 @@ def maintain_db_size():
         print_error(f"Database maintenance failed: {e}")
 
 
+def shutdown_db() -> None:
+    """Close the database connection if it is open."""
+    try:
+        if not db.is_closed():
+            db.close()
+    except Exception as exc:
+        print_error(f"Failed to close database: {exc}")
+
+
 def create_conversation(model: str) -> int:
     """Create a new conversation and return its ID."""
     conversation = Conversation.create(model=model)
