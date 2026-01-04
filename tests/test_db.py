@@ -1,7 +1,12 @@
-from pathlib import Path
+from __future__ import annotations
+
+import importlib
 import sys
 import tempfile
 import unittest
+from datetime import datetime, timedelta
+from pathlib import Path
+from unittest import TestCase, mock
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 SRC_PATH = PROJECT_ROOT / "src"
@@ -15,6 +20,11 @@ except ModuleNotFoundError as import_error:  # pragma: no cover - environment gu
     IMPORT_ERROR = import_error
 else:
     IMPORT_ERROR = None
+
+try:
+    import peewee  # type: ignore
+except ImportError:
+    peewee = None
 
 
 class ShutdownDbTestCase(unittest.TestCase):
@@ -48,24 +58,6 @@ class ShutdownDbTestCase(unittest.TestCase):
                     db.db.close()
 
 
-if __name__ == "__main__":
-    unittest.main()
-from __future__ import annotations
-
-import importlib
-import unittest
-import sys
-import tempfile
-from datetime import datetime, timedelta
-from pathlib import Path
-from unittest import TestCase, mock
-
-try:
-    import peewee  # type: ignore
-except ImportError:
-    peewee = None
-
-
 @unittest.skipUnless(peewee is not None, "peewee is required for database tests")
 class MaintainDbSizeTests(TestCase):
     """Ensure database cleanup removes empty conversations when limits are exceeded."""
@@ -80,9 +72,7 @@ class MaintainDbSizeTests(TestCase):
         self.path_home_patcher.start()
 
         # Enable importing the package from the repository's src directory.
-        project_root = Path(__file__).resolve().parents[1]
-        src_path = project_root / "src"
-        self.src_path_entry = str(src_path)
+        self.src_path_entry = str(SRC_PATH)
         sys.path.insert(0, self.src_path_entry)
 
         # Reload db module so it binds to the patched home directory.
@@ -135,3 +125,7 @@ class MaintainDbSizeTests(TestCase):
         remaining_ids = {conv.id for conv in self.db_mod.Conversation.select()}
         self.assertNotIn(empty_conv_id, remaining_ids)
         self.assertIn(kept_conv_id, remaining_ids)
+
+
+if __name__ == "__main__":
+    unittest.main()

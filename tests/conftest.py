@@ -144,18 +144,21 @@ class _DummyFn:
         return lambda *a, **k: 0
 
 
-_install_stub(
-    "peewee",
-    {
-        "Model": type("Model", (), {}),
-        "CharField": type("CharField", (), {"__init__": lambda self, *a, **k: None}),
-        "DateTimeField": type("DateTimeField", (), {"__init__": lambda self, *a, **k: None}),
-        "ForeignKeyField": type("ForeignKeyField", (), {"__init__": lambda self, *a, **k: None}),
-        "SqliteDatabase": _DummyDatabase,
-        "TextField": type("TextField", (), {"__init__": lambda self, *a, **k: None}),
-        "fn": _DummyFn(),
-    },
-)
+try:  # Prefer real peewee when available for database-heavy tests.
+    import peewee as _peewee  # type: ignore
+except Exception:  # pragma: no cover - sandbox fallback
+    _install_stub(
+        "peewee",
+        {
+            "Model": type("Model", (), {}),
+            "CharField": type("CharField", (), {"__init__": lambda self, *a, **k: None}),
+            "DateTimeField": type("DateTimeField", (), {"__init__": lambda self, *a, **k: None}),
+            "ForeignKeyField": type("ForeignKeyField", (), {"__init__": lambda self, *a, **k: None}),
+            "SqliteDatabase": _DummyDatabase,
+            "TextField": type("TextField", (), {"__init__": lambda self, *a, **k: None}),
+            "fn": _DummyFn(),
+        },
+    )
 
 _install_stub(
     "ollama",
@@ -192,6 +195,18 @@ def preload_default_config(isolate_home: Path) -> None:
     config_path = Path(isolate_home) / ".orun" / "config.json"
     config_path.parent.mkdir(parents=True, exist_ok=True)
     config_path.write_text(json.dumps({}), encoding="utf-8")
+
+
+@pytest.fixture(autouse=True)
+def ensure_ddgs_attribute() -> None:
+    """Guarantee the tools module always exposes a DDGS attribute for patching."""
+    try:
+        import orun.tools as _tools  # type: ignore
+
+        if not hasattr(_tools, "DDGS"):
+            _tools.DDGS = object  # type: ignore[attr-defined]
+    except Exception:
+        return
 
 
 @pytest.fixture()
@@ -274,44 +289,49 @@ def pytest_configure() -> None:
         sys.modules["ollama"] = fake_ollama
 
     if "peewee" not in sys.modules:
-        fake_peewee = types.ModuleType("peewee")
+        try:
+            import peewee as real_peewee  # type: ignore
+        except Exception:  # pragma: no cover - fallback to lightweight stub
+            fake_peewee = types.ModuleType("peewee")
 
-        class _Field:
-            def __init__(self, *args, **kwargs):
-                pass
+            class _Field:
+                def __init__(self, *args, **kwargs):
+                    pass
 
-            def __call__(self, *args, **kwargs):
-                return self
+                def __call__(self, *args, **kwargs):
+                    return self
 
-        class _Model:
-            def __init__(self, *args, **kwargs):
-                pass
+            class _Model:
+                def __init__(self, *args, **kwargs):
+                    pass
 
-            def __init_subclass__(cls, **kwargs):
-                return super().__init_subclass__(**kwargs)
+                def __init_subclass__(cls, **kwargs):
+                    return super().__init_subclass__(**kwargs)
 
-        class _SqliteDatabase:
-            def __init__(self, *args, **kwargs):
-                pass
+            class _SqliteDatabase:
+                def __init__(self, *args, **kwargs):
+                    pass
 
-            def connect(self, **_kwargs):
-                return None
+                def connect(self, **_kwargs):
+                    return None
 
-            def create_tables(self, *args, **kwargs):
-                return None
+                def create_tables(self, *args, **kwargs):
+                    return None
 
-            def execute_sql(self, *args, **kwargs):
-                return None
+                def execute_sql(self, *args, **kwargs):
+                    return None
 
-        fake_peewee.CharField = _Field
-        fake_peewee.DateTimeField = _Field
-        fake_peewee.ForeignKeyField = _Field
-        fake_peewee.Model = _Model
-        fake_peewee.SqliteDatabase = _SqliteDatabase
-        fake_peewee.TextField = _Field
-        fake_peewee.fn = types.SimpleNamespace()
+            fake_peewee.CharField = _Field
+            fake_peewee.DateTimeField = _Field
+            fake_peewee.ForeignKeyField = _Field
+            fake_peewee.Model = _Model
+            fake_peewee.SqliteDatabase = _SqliteDatabase
+            fake_peewee.TextField = _Field
+            fake_peewee.fn = types.SimpleNamespace()
 
-        sys.modules["peewee"] = fake_peewee
+            sys.modules["peewee"] = fake_peewee
+        else:
+            sys.modules["peewee"] = real_peewee
 
     if "rich" not in sys.modules:
         class _RichStub:
@@ -541,12 +561,11 @@ def _install_optional_dependency_stubs() -> None:
 _install_ollama_stub()
 _install_rich_stub()
 _install_optional_dependency_stubs()
-
-# Disable persistent caching during tests to avoid cross-run pollution.
+# Ensure core module attributes exist for downstream patches.
 try:
-    import orun.cache as _cache  # type: ignore
+    import orun.tools as _tools  # type: ignore
 
-    _cache.get_cached_text = lambda key: None
-    _cache.set_cached_text = lambda key, value: None
+    if not hasattr(_tools, "DDGS"):
+        _tools.DDGS = object  # type: ignore[attr-defined]
 except Exception:
     pass
