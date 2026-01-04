@@ -9,12 +9,18 @@ import subprocess
 import time
 import urllib.parse
 import urllib.request
+from typing import Any, Mapping
 from html.parser import HTMLParser
 
 import arxiv
 from ddgs import DDGS
 from langdetect import LangDetectException, detect
 from orun import config as orun_config, utils
+from orun.http_client import (
+    HttpClient,
+    HttpClientError,
+    HttpClientSettings,
+)
 from orun.cache import get_cached_text, set_cached_text
 from orun.rich_utils import print_error, print_warning
 from orun.search_config import search_config
@@ -216,6 +222,45 @@ class StructuredHTMLParser(HTMLParser):
 
 # --- Actual Functions ---
 
+_HTTP_CLIENT: HttpClient | None = None
+_HTTP_CLIENT_SETTINGS: HttpClientSettings | None = None
+
+
+def _get_http_client(timeout: float, retries: int, backoff: float) -> HttpClient:
+    """
+    Lazily initialize and reuse an HTTP client with consistent settings.
+    """
+    global _HTTP_CLIENT, _HTTP_CLIENT_SETTINGS
+    settings = HttpClientSettings(
+        timeout=timeout,
+        retries=retries,
+        backoff_factor=backoff,
+        user_agent="Mozilla/5.0 (compatible; orun/1.0)",
+    )
+    if _HTTP_CLIENT is None or _HTTP_CLIENT_SETTINGS != settings:
+        _HTTP_CLIENT = HttpClient(settings=settings)
+        _HTTP_CLIENT_SETTINGS = settings
+    return _HTTP_CLIENT
+
+
+def _result_envelope(
+    success: bool,
+    source: Mapping[str, Any],
+    data: Any | None = None,
+    error: str | None = None,
+    message: str | None = None,
+) -> str:
+    """
+    Produce a standardized result envelope for tool outputs.
+    """
+    payload: dict[str, Any] = {"success": success, "source": dict(source)}
+    if message:
+        payload["message"] = message
+    if error:
+        payload["error"] = error
+    if data is not None:
+        payload["data"] = data
+    return json.dumps(payload, ensure_ascii=False, indent=2)
 def _resolve_host_ips(host: str) -> list[IPAddress]:
     """
     Resolve a hostname to a list of IP addresses.
@@ -568,13 +613,18 @@ def search_files(path: str, pattern: str) -> str:
         return f"Error searching files: {str(e)}"
 
 
-def fetch_url(url: str) -> str:
+def fetch_url(url: str, http_client: HttpClient | None = None) -> str:
     """
-    Fetches and converts URL content to readable text.
-    Uses Jina AI Reader API (LLM-optimized, free) with fallback to custom parser.
+    Fetch and normalize URL content with retries and caching.
     """
     normalized = url.strip()
     if not normalized:
+        return _result_envelope(
+            success=False,
+            source={"tool": "fetch_url"},
+            error="Error: URL is empty.",
+        )
+    if not normalized.startswith(("http://", "https://")):
         return "Error: URL is empty."
 
     def _validation_error(message: str) -> str:
@@ -662,6 +712,8 @@ def fetch_url(url: str) -> str:
     max_chars = limits.get("fetch_max_chars", 15000)
     max_bytes = max_chars if max_chars else None
     retries = limits.get("fetch_retry_count", 1)
+    backoff = limits.get("fetch_backoff_seconds", 1.0)
+    client = http_client or _get_http_client(timeout, retries, backoff)
 
     allowed, validation_error = _validate_fetch_destination(
         parsed.hostname,
@@ -682,6 +734,47 @@ def fetch_url(url: str) -> str:
             return text[:max_chars] + "\n... (content truncated)"
         return text
 
+    jina_error: str | None = None
+
+    try:
+        jina_url = f"https://r.jina.ai/{normalized}"
+        response = client.get(
+            jina_url,
+            headers={
+                "X-Return-Format": "markdown",
+            },
+        )
+        content = response.text()
+        if content and len(content) > 50:
+            result = _result_envelope(
+                success=True,
+                source={
+                    "tool": "fetch_url",
+                    "url": normalized,
+                    "strategy": "jina_ai",
+                },
+                data=_truncate(content),
+                message="Fetched content using Jina reader",
+            )
+            set_cached_text(cache_key, result)
+            return result
+    except HttpClientError as exc:
+        jina_error = str(exc)
+
+    try:
+        response = client.get(
+            normalized,
+            headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"},
+        )
+        charset = getattr(response.headers, "get_content_charset", lambda: None)() or "utf-8"
+        html_content = response.body.decode(charset, errors="ignore")
+    except HttpClientError as exc:
+        error_msg = jina_error or str(exc)
+        return _result_envelope(
+            success=False,
+            source={"tool": "fetch_url", "url": normalized},
+            error=f"Error fetching URL: {error_msg}",
+        )
     def _size_error(length: int | None) -> str:
         cap_description = f"{max_chars} bytes" if max_chars else "configured limit"
         if length is None:
@@ -816,19 +909,24 @@ def fetch_url(url: str) -> str:
 
     parser = StructuredHTMLParser()
     parser.feed(html_content)
-    text = parser.get_text()
-
-    if not text:
-        text = "No readable text content found."
-
-    text = _truncate(text)
+    text = parser.get_text() or "No readable text content found."
 
     if parser.title:
         header = f"{parser.title}\n{'=' * len(parser.title)}\n\n"
     else:
         header = ""
 
-    result = f"{header}{text}\n\nSource: {normalized}".strip()
+    formatted = _truncate(f"{header}{text}\n\nSource: {normalized}".strip())
+    result = _result_envelope(
+        success=True,
+        source={
+            "tool": "fetch_url",
+            "url": normalized,
+            "strategy": "html_parser",
+            "title": parser.title,
+        },
+        data=formatted,
+    )
     set_cached_text(cache_key, result)
     return result
 
@@ -935,7 +1033,7 @@ def get_arxiv_paper(arxiv_id: str) -> str:
         return f"Error fetching arXiv paper: {str(e)}"
 
 
-def web_search(query: str, max_results: int = 5) -> str:
+def web_search(query: str, max_results: int = 5, http_client: HttpClient | None = None) -> str:
     """
     Search the web using Google Custom Search API (with DuckDuckGo fallback).
     Detects query language and returns region-appropriate results.
@@ -954,48 +1052,49 @@ def web_search(query: str, max_results: int = 5) -> str:
 
     timeout = limits.get("fetch_timeout_seconds", 20)
     retries = limits.get("web_search_retry_count", 1)
-    last_error = None
+    backoff = limits.get("web_search_backoff_seconds", 1.0)
+    client = http_client or _get_http_client(timeout, retries, backoff)
+    last_error: str | None = None
 
     if search_config.has_google_credentials():
-        for attempt in range(retries + 1):
-            try:
-                params = urllib.parse.urlencode({
-                    "key": search_config.google_api_key,
-                    "cx": search_config.google_cse_id,
-                    "q": query,
-                    "num": max_results,
-                })
-                url = f"https://www.googleapis.com/customsearch/v1?{params}"
-                req = urllib.request.Request(
-                    url,
-                    headers={"User-Agent": "Mozilla/5.0 (compatible; orun/1.0)"},
-                )
-                with urllib.request.urlopen(req, timeout=timeout) as response:
-                    payload = response.read().decode("utf-8", errors="ignore")
-                data = json.loads(payload)
-                items = data.get("items", [])
-                if not items:
-                    result = f"No results found for query: {query}"
-                else:
-                    output = [f"**Web Search Results for '{query}':**\n"]
-                    for i, item in enumerate(items[:max_results], 1):
-                        title = item.get("title", "No title")
-                        link = item.get("link", "")
-                        snippet = item.get("snippet", "No description")
-                        output.append(f"{i}. **{title}**")
-                        output.append(f"   URL: {link}")
-                        output.append(f"   {snippet}\n")
-                    result = "\n".join(output)
-                set_cached_text(cache_key, result)
-                return result
-            except Exception as e:
-                last_error = e
-                if attempt < retries:
-                    time.sleep(1)
-                    continue
-                break
+        params = urllib.parse.urlencode(
+            {
+                "key": search_config.google_api_key,
+                "cx": search_config.google_cse_id,
+                "q": query,
+                "num": max_results,
+            }
+        )
+        url = f"https://www.googleapis.com/customsearch/v1?{params}"
+        try:
+            response = client.get(url)
+            payload = response.text()
+            data = json.loads(payload)
+            items = data.get("items", [])
+            results = [
+                {
+                    "title": item.get("title", "No title"),
+                    "url": item.get("link", ""),
+                    "snippet": item.get("snippet", "No description"),
+                }
+                for item in items[:max_results]
+            ]
+            message = None
+            if not results:
+                message = f"No results found for query: {query}"
+            result = _result_envelope(
+                success=True,
+                source={"tool": "web_search", "provider": "google", "query": query},
+                data=results,
+                message=message,
+            )
+            set_cached_text(cache_key, result)
+            return result
+        except json.JSONDecodeError as exc:
+            last_error = f"Malformed search response: {exc}"
+        except HttpClientError as exc:
+            last_error = str(exc)
 
-    # Detect language based on query text
     def detect_language(text: str) -> str:
         """Detect language and return appropriate DuckDuckGo region code."""
         LANG_TO_REGION = {
@@ -1021,33 +1120,45 @@ def web_search(query: str, max_results: int = 5) -> str:
         except (LangDetectException, Exception):
             return "us-en"
 
-    # Search with DuckDuckGo
     try:
         region = detect_language(query)
         ddgs = DDGS()
         results = list(ddgs.text(query, region=region, max_results=max_results))
 
-        if not results:
-            return f"No results found for query: {query}"
+        formatted_results = [
+            {
+                "title": result.get("title", "No title"),
+                "url": result.get("href", result.get("link", "")),
+                "snippet": result.get("body", result.get("snippet", "No description")),
+            }
+            for result in results
+        ]
 
-        output = [f"**Web Search Results for '{query}':**\n"]
-        for i, result in enumerate(results, 1):
-            title = result.get("title", "No title")
-            link = result.get("href", result.get("link", ""))
-            snippet = result.get("body", result.get("snippet", "No description"))
+        message = None
+        if not formatted_results:
+            message = f"No results found for query: {query}"
 
-            output.append(f"{i}. **{title}**")
-            output.append(f"   URL: {link}")
-            output.append(f"   {snippet}\n")
-
-        result = "\n".join(output)
+        result = _result_envelope(
+            success=True,
+            source={"tool": "web_search", "provider": "duckduckgo", "query": query},
+            data=formatted_results,
+            message=message,
+        )
         set_cached_text(cache_key, result)
         return result
 
-    except Exception as e:
+    except Exception as exc:
         if last_error:
-            return f"Error performing web search: {last_error}"
-        return f"Error performing web search: {str(e)}"
+            return _result_envelope(
+                success=False,
+                source={"tool": "web_search", "query": query},
+                error=f"Error performing web search: {last_error}",
+            )
+        return _result_envelope(
+            success=False,
+            source={"tool": "web_search", "query": query},
+            error=f"Error performing web search: {exc}",
+        )
 
 # --- Git Integration Tools ---
 
