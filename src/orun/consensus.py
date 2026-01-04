@@ -202,7 +202,9 @@ def run_sequential_consensus(
 
         # Execute this step
         try:
-            tool_defs = tools.TOOL_DEFINITIONS if tools_enabled else None
+            tool_defs = (
+                tools.get_tools_for_model(model_name) if tools_enabled else None
+            )
 
             # First call - might request tools
             response = ollama.chat(
@@ -316,6 +318,11 @@ def run_parallel_consensus(
         """
         Run a single model execution.
 
+
+    def _run_model(model_idx: int, model_config: dict) -> Dict[str, str]:
+        """
+        Run a single model execution.
+
         Returns a dict with model output or an error string keyed by 'error'.
         """
         model_name = model_config["name"]
@@ -335,6 +342,9 @@ def run_parallel_consensus(
         messages.append({"role": "user", "content": user_prompt, "images": image_paths})
 
         try:
+            tool_defs = (
+                tools.get_tools_for_model(model_name) if tools_enabled else None
+            )
             tool_defs = tools.TOOL_DEFINITIONS if tools_enabled else None
             with db.db.connection_context():
                 response = ollama.chat(

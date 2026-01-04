@@ -479,6 +479,19 @@ def fetch_url(url: str) -> str:
         buffer = bytearray()
         chunk_size = 8192
         while True:
+            to_read = min(chunk_size, max_bytes - len(buffer)) if max_bytes else chunk_size
+            next_chunk = response.read(to_read)
+            if not next_chunk:
+                break
+            buffer.extend(next_chunk)
+
+            if max_bytes and len(buffer) >= max_bytes:
+                # If additional data remains, treat this as exceeding the cap
+                extra = response.read(1)
+                if extra:
+                    return bytes(buffer[:max_bytes]), _size_error(None), encoding
+                buffer = buffer[:max_bytes]
+                return bytes(buffer), _size_error(None), encoding
             next_chunk = response.read(
                 min(chunk_size, max_bytes - len(buffer)) if max_bytes else chunk_size
             )
