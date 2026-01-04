@@ -6,7 +6,14 @@ Supports:
 - Parallel aggregation: Models run independently, then results are synthesized
 """
 
+from concurrent.futures import Future, ThreadPoolExecutor, wait
+from dataclasses import dataclass
+from threading import Lock
 from typing import Dict, List, Optional
+import contextlib
+import threading
+from concurrent.futures import Future, ThreadPoolExecutor, as_completed
+from typing import Dict, List, Optional, Tuple
 
 import ollama
 
@@ -199,7 +206,9 @@ def run_sequential_consensus(
 
         # Execute this step
         try:
-            tool_defs = tools.TOOL_DEFINITIONS if tools_enabled else None
+            tool_defs = (
+                tools.get_tools_for_model(model_name) if tools_enabled else None
+            )
 
             # First call - might request tools
             response = ollama.chat(
@@ -292,8 +301,8 @@ def run_parallel_consensus(
     model_options: Optional[Dict],
 ) -> str:
     """
-    Execute models in parallel (sequentially for now, can optimize later),
-    then aggregate results.
+    Execute models in parallel, aggregate results, and enforce time-bound execution.
+    Execute models in parallel using a thread pool, then aggregate results.
     """
     console.print(
         f"\n🌐 Starting consensus pipeline: {pipeline_name}", style=Colors.CYAN
@@ -302,35 +311,71 @@ def run_parallel_consensus(
         f"   Type: Parallel | Models: {len(pipeline['models'])}", style=Colors.GREY
     )
 
+    @dataclass
+    class ParallelResponse:
+        """Container for a model response and associated metadata."""
+
+        model: str
+        content: str
+        metadata: Dict[str, object]
+        error: Optional[str] = None
+
     models_config = pipeline["models"]
     total_models = len(models_config)
+    timeout_seconds = float(pipeline.get("timeout_seconds", 120))
+
+    db_lock = Lock()
 
     # Collect responses from all models
-    responses = []
+    responses: List[ParallelResponse] = []
 
-    for model_idx, model_config in enumerate(models_config, 1):
-        model_name = model_config["name"]
-        step_options = model_config.get("options", {})
-
-        # Merge with global model_options if provided
-        if model_options:
-            step_options = {**step_options, **model_options}
-
-        # Print model header
-        console.print(
-            f"\n[Model {model_idx}/{total_models}: {model_name}]", style=Colors.MAGENTA
-        )
-
-        # Build messages
-        messages = []
-        if system_prompt:
+    def _build_messages(model_index: int, model_config: dict) -> List[dict]:
+        """
+        Build the message payload for an individual model invocation.
+        """
+        messages: List[dict] = []
+        step_system_prompt = model_config.get("system_prompt")
+        if step_system_prompt:
+            messages.append({"role": "system", "content": step_system_prompt})
+        elif system_prompt:
             messages.append({"role": "system", "content": system_prompt})
 
         messages.append({"role": "user", "content": user_prompt, "images": image_paths})
+        return messages
 
-        # Execute
+    def _execute_model(model_index: int, model_config: dict) -> ParallelResponse:
+        """
+        Invoke a single model with tool handling and thread-safe DB writes.
+    # Collect responses from all models in deterministic order
+    responses: List[Optional[Dict[str, str]]] = [None] * total_models
+    errors: List[Tuple[str, str]] = []
+    db_lock = threading.Lock()
+
+    def _run_model(model_idx: int, model_config: dict) -> Dict[str, str]:
+        """
+        Run a single model execution.
+
+
+    def _run_model(model_idx: int, model_config: dict) -> Dict[str, str]:
+        """
+        Run a single model execution.
+
+        Returns a dict with model output or an error string keyed by 'error'.
+        """
+        model_name = model_config["name"]
+        step_options = model_config.get("options", {})
+
+        if model_options:
+            step_options = {**step_options, **model_options}
+
+        console.print(
+            f"\n[Model {model_index}/{total_models}: {model_name}]",
+            style=Colors.MAGENTA,
+        )
+
         try:
             tool_defs = tools.TOOL_DEFINITIONS if tools_enabled else None
+            messages = _build_messages(model_index, model_config)
 
             response = ollama.chat(
                 model=model_name,
@@ -343,7 +388,6 @@ def run_parallel_consensus(
             msg = response["message"]
             model_output = msg.get("content", "")
 
-            # Handle tool calls if present
             if msg.get("tool_calls") and tools_enabled:
                 messages.append(msg)
                 execute_tool_calls(msg["tool_calls"], messages)
@@ -351,9 +395,26 @@ def run_parallel_consensus(
                 console.print(f"🤖 [{model_name}] Continuing...", style=Colors.CYAN)
 
                 follow_up = ollama.chat(
+            f"\n[Model {model_idx}/{total_models}: {model_name}]",
+            style=Colors.MAGENTA,
+        )
+
+        messages = []
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+        messages.append({"role": "user", "content": user_prompt, "images": image_paths})
+
+        try:
+            tool_defs = (
+                tools.get_tools_for_model(model_name) if tools_enabled else None
+            )
+            tool_defs = tools.TOOL_DEFINITIONS if tools_enabled else None
+            with db.db.connection_context():
+                response = ollama.chat(
                     model=model_name,
                     messages=messages,
-                    stream=True,
+                    tools=tool_defs,
+                    stream=False,
                     options=step_options,
                 )
 
@@ -361,31 +422,141 @@ def run_parallel_consensus(
             else:
                 console.print(model_output, style=Colors.GREY)
 
-            # Store response
-            responses.append({"model": model_name, "content": model_output})
+            metadata = {
+                "model_index": model_index - 1,
+                "role": model_config.get("role"),
+                "options": step_options,
+            }
 
-            # Save to database
-            db.add_message(
-                conversation_id, "assistant", f"[{model_name}]\n{model_output}"
-            )
+            with db_lock:
+                db.add_message(
+                    conversation_id, "assistant", f"[{model_name}]\n{model_output}"
+                )
 
-            # Unload model to free GPU/RAM for next model
             unload_model(model_name)
 
-        except Exception as e:
-            error_msg = f"Error with model {model_name}: {str(e)}"
+            return ParallelResponse(
+                model=model_name, content=model_output, metadata=metadata
+            )
+
+                msg = response["message"]
+                model_output = msg.get("content", "")
+
+                if msg.get("tool_calls") and tools_enabled:
+                    messages.append(msg)
+                    execute_tool_calls(msg["tool_calls"], messages)
+                    console.print(
+                        f"🤖 [{model_name}] Continuing...", style=Colors.CYAN
+                    )
+                    follow_up = ollama.chat(
+                        model=model_name,
+                        messages=messages,
+                        stream=True,
+                        options=step_options,
+                    )
+                    model_output = handle_ollama_stream(follow_up)
+                else:
+                    console.print(model_output, style=Colors.GREY)
+
+                # Save to database in a thread-safe manner
+                with db_lock:
+                    db.add_message(
+                        conversation_id, "assistant", f"[{model_name}]\n{model_output}"
+                    )
+
+            return {"model": model_name, "content": model_output, "index": model_idx - 1}
+        except Exception as exc:  # noqa: BLE001
+            error_msg = f"Error with model {model_name}: {str(exc)}"
             print_error(error_msg)
             console.print(
-                f"Pipeline: {pipeline_name}, Model {model_idx}/{total_models}",
+                f"Pipeline: {pipeline_name}, Model {model_index}/{total_models}",
                 style=Colors.RED,
             )
-            # Try to unload the model even on error
             unload_model(model_name)
-            # Continue with other models
+            return ParallelResponse(
+                model=model_name,
+                content="",
+                metadata={"model_index": model_index - 1, "role": model_config.get("role")},
+                error=str(exc),
+            )
 
-    if not responses:
+    with ThreadPoolExecutor(max_workers=total_models) as executor:
+        future_to_model: Dict[Future[ParallelResponse], dict] = {
+            executor.submit(_execute_model, idx, model_cfg): {
+                "model": model_cfg["name"],
+                "index": idx,
+            }
+            for idx, model_cfg in enumerate(models_config, 1)
+        }
+
+        done, pending = wait(future_to_model.keys(), timeout=timeout_seconds)
+
+        for future in pending:
+            meta = future_to_model[future]
+            future.cancel()
+            console.print(
+                f"⏳ Cancelled {meta['model']} after {timeout_seconds:.0f}s timeout",
+                style=Colors.YELLOW,
+            )
+
+        for future in done:
+            meta = future_to_model[future]
+            if future.cancelled():
+                console.print(
+                    f"⚠️ {meta['model']} did not complete before cancellation",
+                    style=Colors.YELLOW,
+                )
+                continue
+
+            try:
+                result = future.result()
+                if result.error:
+                    continue
+                responses.append(result)
+            except Exception as exc:  # noqa: BLE001
+                print_error(f"Error collecting result for {meta['model']}: {exc}")
+            return {"model": model_name, "error": error_msg, "index": model_idx - 1}
+        finally:
+            with contextlib.suppress(Exception):
+                unload_model(model_name)
+
+    max_workers = min(total_models, 8) if total_models > 0 else 1
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures: List[Future[Dict[str, str]]] = [
+            executor.submit(_run_model, idx, model_config)
+            for idx, model_config in enumerate(models_config, 1)
+        ]
+
+        for future in as_completed(futures):
+            result = future.result()
+            model_index = result.get("index")
+            if result.get("error"):
+                errors.append((result["model"], result["error"]))
+                continue
+            if model_index is not None and model_index < len(responses):
+                responses[model_index] = {
+                    "model": result["model"],
+                    "content": result["content"],
+                }
+
+    successful_responses = [resp for resp in responses if resp]
+
+    if not successful_responses:
         print_error("No successful responses from models")
         return ""
+
+    ordered_responses = sorted(
+        responses, key=lambda r: r.metadata.get("model_index", 0)
+    )
+    serialized_responses = [
+        {"model": r.model, "content": r.content, "metadata": r.metadata}
+        for r in ordered_responses
+    ]
+    if errors:
+        console.print(
+            f"\n⚠️  {len(errors)} model(s) failed during consensus. See logs above for details.",
+            style=Colors.YELLOW,
+        )
 
     # Aggregation
     aggregation = pipeline.get("aggregation", {})
@@ -393,7 +564,8 @@ def run_parallel_consensus(
 
     if method == "synthesis":
         return synthesize_responses(
-            responses=responses,
+            responses=serialized_responses,
+            responses=successful_responses,
             aggregation=aggregation,
             conversation_id=conversation_id,
             pipeline_name=pipeline_name,
@@ -402,12 +574,13 @@ def run_parallel_consensus(
     elif method == "best_of":
         # Return all responses formatted
         console.print(
-            f"\n✓ Parallel consensus completed ({len(responses)} responses)",
+            f"\n✓ Parallel consensus completed ({len(successful_responses)} responses)",
             style=Colors.GREEN,
         )
 
         result = ""
-        for idx, resp in enumerate(responses, 1):
+        for idx, resp in enumerate(serialized_responses, 1):
+        for idx, resp in enumerate(successful_responses, 1):
             result += f"\n{'=' * 60}\n"
             result += f"Response {idx} ({resp['model']}):\n"
             result += f"{'=' * 60}\n"
@@ -417,7 +590,9 @@ def run_parallel_consensus(
         return result
     else:
         print_error(f"Unknown aggregation method: {method}")
-        return responses[0]["content"] if responses else ""
+        return (
+            successful_responses[0]["content"] if successful_responses else ""
+        )
 
 
 def synthesize_responses(
