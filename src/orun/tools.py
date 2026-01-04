@@ -2,6 +2,8 @@ import html
 import ipaddress
 import json
 import os
+import re
+import shlex
 import socket
 import subprocess
 import time
@@ -359,8 +361,129 @@ def write_file(file_path: str, content: str) -> str:
         return f"Error writing file: {str(e)}"
 
 
+def _is_filesystem_command(command: str) -> bool:
+    """
+    Heuristic to determine if a shell command touches the filesystem.
+
+    The check is intentionally conservative: redirections and common
+    filesystem-oriented commands trigger sandbox validation.
+    """
+    tokens = shlex.split(command)
+    if not tokens:
+        return False
+
+    fs_keywords = {
+        "cd",
+        "ls",
+        "pwd",
+        "cat",
+        "head",
+        "tail",
+        "cp",
+        "mv",
+        "rm",
+        "touch",
+        "mkdir",
+        "rmdir",
+        "find",
+        "grep",
+        "sed",
+        "awk",
+        "chmod",
+        "chown",
+    }
+
+    if tokens[0] in fs_keywords:
+        return True
+
+    redirection_patterns = [r">", r">>", r"2>", r"\|"]
+    return any(re.search(pattern, command) for pattern in redirection_patterns)
+
+
+def _is_command_allowed(command: str) -> tuple[bool, str]:
+    """Check allowlist/denylist rules for shell commands."""
+    shell_config = orun_config.get_section("shell")
+    allowlist = shell_config.get("allowlist") or []
+    denylist = shell_config.get("denylist") or []
+
+    for blocked in denylist:
+        if blocked and blocked.lower() in command.lower():
+            return False, f"Command blocked by denylist entry: '{blocked}'"
+
+    if allowlist:
+        for allowed in allowlist:
+            if allowed and allowed.lower() in command.lower():
+                break
+        else:
+            return False, "Command not in allowlist"
+
+    return True, ""
+
+
+def is_shell_command_allowed(command: str) -> tuple[bool, str]:
+    """
+    Public wrapper for allowlist/denylist checks.
+
+    Returns:
+        Tuple of (is_allowed, reason). The reason is empty when allowed.
+    """
+    return _is_command_allowed(command)
+
+
+def _validate_filesystem_access(command: str) -> tuple[bool, str]:
+    """
+    Validate commands that interact with the filesystem using sandbox rules.
+
+    We inspect common path arguments (including redirections and cwd changes) and
+    reuse the sandbox allowlist to prevent accidental traversal outside the
+    configured roots.
+    """
+    try:
+        parsed = shlex.split(command)
+    except ValueError:
+        return False, "Invalid command syntax"
+
+    paths_to_check: set[str] = set()
+    tokens_to_skip = {"&&", "||", "|"}
+
+    if parsed:
+        # Handle explicit cwd changes (cd /path && ...)
+        if parsed[0] == "cd" and len(parsed) > 1:
+            paths_to_check.add(parsed[1])
+
+    redirection_match = re.findall(r">\s*([^\s]+)|>>\s*([^\s]+)|2>\s*([^\s]+)", command)
+    for match in redirection_match:
+        for target in match:
+            if target:
+                paths_to_check.add(target)
+
+    # Capture positional path arguments for common filesystem commands
+    fs_command_args = {"cat", "head", "tail", "cp", "mv", "rm", "touch", "mkdir", "rmdir"}
+    if parsed and parsed[0] in fs_command_args:
+        for token in parsed[1:]:
+            if token.startswith("-") or token in tokens_to_skip:
+                continue
+            paths_to_check.add(token)
+
+    for path in paths_to_check:
+        allowed, reason = utils.is_path_allowed(path)
+        if not allowed:
+            return False, reason
+
+    return True, ""
+
+
 def run_shell_command(command: str) -> str:
-    """Executes a shell command."""
+    """Executes a shell command with allow/deny checks and sandbox enforcement."""
+    allowed, reason = is_shell_command_allowed(command)
+    if not allowed:
+        return f"Error executing command: {reason}"
+
+    if _is_filesystem_command(command):
+        allowed, reason = _validate_filesystem_access(command)
+        if not allowed:
+            return f"Error executing command: {reason}"
+
     try:
         limits = orun_config.get_section("limits")
         timeout = limits.get("shell_timeout_seconds", 20)

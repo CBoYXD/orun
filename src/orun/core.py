@@ -167,7 +167,13 @@ def _validate_tool_arguments(func_name: str, args: dict[str, Any]) -> str | None
 
 
 def execute_tool_calls(tool_calls, messages):
-    """Executes tool calls with user confirmation and updates messages."""
+    """
+    Executes tool calls with user confirmation and updates messages.
+
+    Notes on shell commands:
+    - Whitelisted commands can execute without confirmation.
+    - YOLO mode skips confirmation but still enforces allowlist/denylist checks.
+    """
     limits = orun_config.get_section("limits")
     preview_limit = limits.get("tool_preview_chars", 200)
 
@@ -191,7 +197,7 @@ def execute_tool_calls(tool_calls, messages):
         # We show the actual tool calls from FunctionGemma instead
         is_proxy_call = func_name == "call_function_model"
 
-        # Special handling for shell commands with YOLO mode
+        # Special handling for shell commands with YOLO mode and allow/deny lists
         should_confirm = True
         if func_name == "run_shell_command" and "command" in args:
             command = args["command"]
@@ -199,13 +205,15 @@ def execute_tool_calls(tool_calls, messages):
             # Check if we should skip confirmation (whitelisted or YOLO mode)
             skip_confirm, skip_reason = yolo_mode.should_skip_confirmation(command)
 
-            # If command is blocked
-            if "BLOCKED" in skip_reason:
-                console.print(f"\n❌ {skip_reason}", style=Colors.RED)
-                messages.append(
-                    {"role": "tool", "content": f"Command blocked: {skip_reason}"}
-                )
-                continue
+            if not skip_confirm:
+                # Warn when denylist blocks even before confirmation
+                allowed, denial_reason = tools.is_shell_command_allowed(command)
+                if not allowed:
+                    console.print(f"\n❌ {denial_reason}", style=Colors.RED)
+                    messages.append(
+                        {"role": "tool", "content": f"Command blocked: {denial_reason}"}
+                    )
+                    continue
 
             # Skip confirmation if needed
             if skip_confirm:
@@ -217,6 +225,10 @@ def execute_tool_calls(tool_calls, messages):
                         console.print(skip_reason, style=Colors.GREEN)
                     elif "YOLO MODE" in skip_reason:
                         console.print(skip_reason, style=Colors.YELLOW)
+                        console.print(
+                            "Note: Allowlist/denylist still enforced even in YOLO mode.",
+                            style=Colors.GREY,
+                        )
 
         # Skip confirmation for proxy calls (call_function_model)
         if is_proxy_call:

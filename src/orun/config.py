@@ -45,12 +45,18 @@ DEFAULT_CONTEXT = {
     "total_chars": 80000,
 }
 
+DEFAULT_SHELL = {
+    "allowlist": [],
+    "denylist": [],
+}
+
 DEFAULTS = {
     "limits": DEFAULT_LIMITS,
     "sandbox": DEFAULT_SANDBOX,
     "cache": DEFAULT_CACHE,
     "db": DEFAULT_DB,
     "context": DEFAULT_CONTEXT,
+    "shell": DEFAULT_SHELL,
 }
 
 
