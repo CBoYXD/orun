@@ -2,6 +2,82 @@ import time
 from contextlib import nullcontext
 from unittest import TestCase, mock
 
+import sys
+import time
+import types
+from contextlib import nullcontext
+from unittest import TestCase, mock
+
+
+class _DummyConsole:
+    def print(self, *args, **kwargs):
+        return None
+
+
+def _install_stub_modules() -> None:
+    """Install lightweight stub modules so consensus imports without heavy deps."""
+    if "ollama" not in sys.modules:
+        sys.modules["ollama"] = mock.Mock()
+
+    rich_utils = types.ModuleType("orun.rich_utils")
+    rich_utils.console = _DummyConsole()
+
+    class Colors:
+        RED = "red"
+        YELLOW = "yellow"
+        GREEN = "green"
+        MAGENTA = "magenta"
+        CYAN = "cyan"
+        GREY = "grey"
+
+    rich_utils.Colors = Colors
+
+    def _print_error(message: str) -> None:
+        return None
+
+    rich_utils.print_error = _print_error
+
+    db_module = types.ModuleType("orun.db")
+
+    class _DummyDB:
+        def connection_context(self):
+            return nullcontext()
+
+    db_module.db = _DummyDB()
+
+    def _add_message(conversation_id: int, role: str, content: str, images=None):
+        return None
+
+    db_module.add_message = _add_message
+    db_module.create_conversation = lambda model: 1
+
+    tools_module = types.ModuleType("orun.tools")
+    tools_module.TOOL_DEFINITIONS = []
+
+    utils_module = types.ModuleType("orun.utils")
+    utils_module.ensure_ollama_running = lambda: None
+
+    consensus_config_module = types.ModuleType("orun.consensus_config")
+    consensus_config_module.consensus_config = mock.Mock()
+
+    models_config_module = types.ModuleType("orun.models_config")
+    models_config_module.models_config = mock.Mock(get_models=lambda: [])
+
+    core_module = types.ModuleType("orun.core")
+    core_module.execute_tool_calls = lambda *args, **kwargs: None
+    core_module.handle_ollama_stream = lambda *args, **kwargs: ""
+
+    sys.modules["orun.rich_utils"] = rich_utils
+    sys.modules["orun.db"] = db_module
+    sys.modules["orun.tools"] = tools_module
+    sys.modules["orun.utils"] = utils_module
+    sys.modules["orun.consensus_config"] = consensus_config_module
+    sys.modules["orun.models_config"] = models_config_module
+    sys.modules["orun.core"] = core_module
+
+
+_install_stub_modules()
+
 from orun import consensus
 
 

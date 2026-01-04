@@ -492,6 +492,14 @@ def fetch_url(url: str) -> str:
                     return bytes(buffer[:max_bytes]), _size_error(None), encoding
                 buffer = buffer[:max_bytes]
                 return bytes(buffer), _size_error(None), encoding
+            next_chunk = response.read(
+                min(chunk_size, max_bytes - len(buffer)) if max_bytes else chunk_size
+            )
+            if not next_chunk:
+                break
+            buffer.extend(next_chunk)
+            if max_bytes and len(buffer) > max_bytes:
+                return bytes(buffer[:max_bytes]), _size_error(None), encoding
 
         return bytes(buffer), None, encoding
 
