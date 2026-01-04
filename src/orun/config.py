@@ -11,6 +11,9 @@ DEFAULT_LIMITS = {
     "fetch_backoff_seconds": 1.0,
     "fetch_max_chars": 15000,
     "fetch_retry_count": 1,
+    "fetch_allow_hosts": [],
+    "fetch_block_hosts": ["localhost", "127.0.0.1", "::1"],
+    "fetch_block_private_networks": True,
     "web_search_max_results": 5,
     "web_search_retry_count": 1,
     "web_search_backoff_seconds": 1.0,
@@ -44,12 +47,18 @@ DEFAULT_CONTEXT = {
     "total_chars": 80000,
 }
 
+DEFAULT_SHELL = {
+    "allowlist": [],
+    "denylist": [],
+}
+
 DEFAULTS = {
     "limits": DEFAULT_LIMITS,
     "sandbox": DEFAULT_SANDBOX,
     "cache": DEFAULT_CACHE,
     "db": DEFAULT_DB,
     "context": DEFAULT_CONTEXT,
+    "shell": DEFAULT_SHELL,
 }
 
 
