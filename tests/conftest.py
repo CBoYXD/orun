@@ -173,10 +173,16 @@ from orun import config as orun_config, db
 
 def pytest_addoption(parser):
     """Accept coverage flags even if pytest-cov is unavailable in the sandbox."""
-    parser.addoption("--cov", action="append", default=[], help="Dummy coverage flag")
-    parser.addoption(
-        "--cov-report", action="append", default=[], help="Dummy coverage report flag"
-    )
+    try:
+        parser.addoption("--cov", action="append", default=[], help="Dummy coverage flag")
+    except Exception:
+        pass
+    try:
+        parser.addoption(
+            "--cov-report", action="append", default=[], help="Dummy coverage report flag"
+        )
+    except Exception:
+        pass
 
 
 @pytest.fixture(autouse=True)
